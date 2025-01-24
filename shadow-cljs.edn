@@ -1,0 +1,23 @@
+{:nrepl {:port 7002
+         :init-ns user}
+ :builds {:app {:target :browser
+                :js-options {:resolve {"highlight.js" {:target :npm :require "highlight.js/lib/core"}
+                                       "lowlight" {:target :npm :require "lowlight/lib/core"}}}
+                :output-dir "target/cljsbuild/public/js"
+                :asset-path "/js"
+                :modules {:app {:entries [biblehodl.app]}}
+                :dev {:closure-defines {"re_frame.trace.trace_enabled_QMARK_" true}}
+                :devtools {:preloads [day8.re-frame-10x.preload]
+                           :watch-dir "resources/public"
+                           :repl-init-ns biblehodl.core
+                           :repl-pprint true}}
+          :test {:target :node-test, :output-to "target/test/test.js"
+                 :autorun true}}
+ :lein true}
+
+
+;; Re-Frame Re-Frame-10x 
+;; In one terminal run:  npx shadow-cljs watch app
+;; In a second terminal run:  lein run
+;; View State in Browser
+;; Re-Frame-10x browser extension show/hide 'Ctrl + H'
