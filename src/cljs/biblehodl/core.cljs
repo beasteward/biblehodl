@@ -66,42 +66,51 @@
          (rf/dispatch [:router/navigated new-match-with-controllers]))))
    {:use-fragment false}))
 
+(defn title-bar []
+  (fn []
+    [:div {:class "flex min-h-12 border-b border-zinc-300 bg-gray-200 w-full"}
+     [:div {:class "flex"}
+      [:button {:class "flex flex-col items-center justify-center min-w-20 hover:text-indigo-600"}
+       [:span {:class "material-icons"} "apps"]]
+      [:button
+       [:img {:src "/img/transparent_logo.png" :class "max-h-12 max-w-12"}]]]]))
+
 (defn menu []
   (fn []
-    [:nav {:class "bg-slate-100 p-0"}
-     [:aside
-      [:ul {:class "flex flex-col items-center"}
-       [:li {:class "text-center w-full hover:bg-white"}
-        [:a {:class "flex flex-col items-center px-5 py-4 hover:text-indigo-700"}
-         [:span.material-icons "chat_bubble_outline"]
-         [:span "Chat"]]]
-       [:li {:class "text-center w-full hover:bg-white"}
-        [:a {:class "flex flex-col items-center px-5 py-4 hover:text-indigo-700"}
-         [:span.material-icons "dynamic_feed"]
-         [:span "Feed"]]]
-       [:li {:class "text-center w-full hover:bg-white"}
-        [:a {:class "flex flex-col items-center px-5 py-4 hover:text-indigo-700"}
-         [:span.material-icons "groups"]
-         [:span "Groups"]]]
-       [:li {:class "text-center w-full hover:bg-white"}
-        [:a {:class "flex flex-col items-center px-5 py-4 hover:text-indigo-700"}
-         [:span.material-icons "perm_contact_calendar"]
-         [:span "Calendar"]]]]]]));
+    [:nav {:class "max-w-20 bg-gray-200 border-r border-zinc-300 p-0 h-full"}
+     [:ul {:class "flex flex-col items-center"}
+      [:li {:class "flex justify-center text-center w-full hover:bg-zinc-50"}
+       [:button {:class "flex flex-col items-center px-5 py-4 hover:text-indigo-600"}
+        [:span {:class "text-zinc-600 material-icons"} "chat_bubble_outline"]
+        [:span {:class "text-xs text-zinc-600"} "Chat"]]]
+      [:li {:class "flex justify-center text-center w-full hover:bg-zinc-50"}
+       [:button {:class "flex flex-col items-center px-5 py-4 hover:text-indigo-600"}
+        [:span {:class "text-zinc-600 material-icons"} "dynamic_feed"]
+        [:span {:class "text-xs text-zinc-600"} "Feed"]]]
+      [:li {:class "flex justify-center text-center w-full hover:bg-zinc-50"}
+       [:button {:class "flex flex-col items-center px-5 py-4 hover:text-indigo-600"}
+        [:span {:class "text-zinc-600 material-icons"} "groups"]
+        [:span {:class "text-xs text-zinc-600"} "Groups"]]]
+      [:li {:class "flex justify-center text-center w-full hover:bg-zinc-50"}
+       [:button {:class "flex flex-col items-center px-5 py-4 hover:text-indigo-600"}
+        [:span {:class "text-zinc-600 material-icons"} "perm_contact_calendar"]
+        [:span {:class "text-xs text-zinc-600"} "Calendar"]]]]]));
 
 (defn page [{{:keys [view name]} :data
              path                :path
              :as                 match}]
-  [:div
+  [:div {:class "bg-zinc-50 h-full w-full"}
    (if view
      [view match]
      [:div "No view specified for route: " name " (" path ")"])])
 
 (defn app []
   (let [current-route @(rf/subscribe [:router/current-route])]
-    [:<>
-     [menu]
-     [page current-route]
-     [:div "Right Panel"]]))
+    [:div {:id "container" :class "flex flex-col h-full"}
+     [title-bar]
+     [:div {:class "flex h-full"}
+      [menu]
+      [page current-route]]]))
 
 (defn ^:dev/after-load mount-components []
   (rf/clear-subscription-cache!)

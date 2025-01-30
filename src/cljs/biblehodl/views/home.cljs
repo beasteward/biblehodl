@@ -6,4 +6,4 @@
   ;[{:start (fn [_] (rf/dispatch [:feed/load]))}])
 
 (defn home []
-  [:div "Home Panel"])
+  [:div "Page Content"])

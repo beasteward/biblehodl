@@ -15,3 +15,5 @@ module.exports = {
   },
   plugins: [require('@tailwindcss/forms')],
 };
+
+// Run `npm run dev' locally to see live compilation of Tailwind css in browser with hotloading
