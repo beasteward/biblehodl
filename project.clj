@@ -17,6 +17,7 @@
                  [expound "0.9.0"]
                  [funcool/struct "1.4.0"]
                  [haslett "0.1.7"]
+                 [com.lambdaisland/deja-fu "1.3.51"]
                  [luminus-http-kit "0.2.0"]
                  [luminus-migrations "0.7.5"]
                  [luminus-transit "0.1.5"]
