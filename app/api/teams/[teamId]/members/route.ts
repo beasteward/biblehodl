@@ -5,6 +5,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "../../../../lib/prisma";
 import { getPubkeyFromRequest } from "../../../../lib/auth";
+import { addPubkeyToRelay, removePubkeyFromRelay } from "../../../../lib/relay-sync";
 
 export async function GET(
   request: NextRequest,
@@ -70,6 +71,9 @@ export async function POST(
     create: { teamId, pubkey: newPubkey, role: assignRole },
   });
 
+  // Sync with private relay whitelist
+  await addPubkeyToRelay(newPubkey);
+
   return NextResponse.json(member, { status: 201 });
 }
 
@@ -111,6 +115,15 @@ export async function DELETE(
   await prisma.member.delete({
     where: { teamId_pubkey: { teamId, pubkey: removePubkey } },
   });
+
+  // Check if this pubkey is still a member of any other team
+  const otherMemberships = await prisma.member.count({
+    where: { pubkey: removePubkey },
+  });
+  // Only remove from relay if they're not in any team
+  if (otherMemberships === 0) {
+    await removePubkeyFromRelay(removePubkey);
+  }
 
   return NextResponse.json({ success: true });
 }

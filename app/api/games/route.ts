@@ -4,6 +4,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "../../lib/prisma";
 import { getPubkeyFromRequest } from "../../lib/auth";
+import { verifyAccess } from "../../lib/membership";
 
 export async function GET(request: NextRequest) {
   const { searchParams } = new URL(request.url);
@@ -26,6 +27,12 @@ export async function POST(request: NextRequest) {
   const pubkey = getPubkeyFromRequest(request);
   if (!pubkey) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+
+  // Verify team membership
+  const hasAccess = await verifyAccess(pubkey);
+  if (!hasAccess) {
+    return NextResponse.json({ error: "You must be a team member to create games" }, { status: 403 });
   }
 
   const body = await request.json();
