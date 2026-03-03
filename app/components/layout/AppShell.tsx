@@ -5,6 +5,7 @@ import { useAppStore, type View } from "../../lib/store";
 import { initChat, teardownChat } from "../../lib/chat-service";
 import { subscribeToDMs } from "../../lib/dm-service";
 import { subscribeToCalendarEvents } from "../../lib/calendar-service";
+import { initMeetings } from "../../lib/meeting-service";
 import ActivityBar from "./ActivityBar";
 import Sidebar from "./Sidebar";
 import ChatView from "../chat/ChatView";
@@ -29,6 +30,7 @@ export default function AppShell() {
       if (keys?.privateKey) {
         subscribeToDMs(keys.privateKey);
         subscribeToCalendarEvents([keys.publicKey]);
+        initMeetings();
       }
     });
     return () => teardownChat();

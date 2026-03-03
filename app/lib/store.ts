@@ -32,6 +32,19 @@ export interface CalendarEvent {
   pubkey: string;
 }
 
+export type MeetingStatus = "scheduled" | "active" | "ended";
+
+export interface Meeting {
+  id: string;
+  name: string;
+  description?: string;
+  status: MeetingStatus;
+  scheduledAt?: number;
+  createdAt: number;
+  pubkey: string;
+  participants: string[];
+}
+
 export interface Profile {
   pubkey: string;
   name?: string;
@@ -63,6 +76,14 @@ interface AppState {
   calendarEvents: CalendarEvent[];
   setCalendarEvents: (events: CalendarEvent[]) => void;
   addCalendarEvent: (event: CalendarEvent) => void;
+
+  // Meetings
+  meetings: Meeting[];
+  setMeetings: (meetings: Meeting[]) => void;
+  addMeeting: (meeting: Meeting) => void;
+  updateMeeting: (id: string, updates: Partial<Meeting>) => void;
+  activeMeetingId: string | null;
+  setActiveMeetingId: (id: string | null) => void;
 
   // Profiles cache
   profiles: Record<string, Profile>;
@@ -119,6 +140,24 @@ export const useAppStore = create<AppState>()(
             ? state.calendarEvents
             : [...state.calendarEvents, event],
         })),
+
+      // Meetings
+      meetings: [],
+      setMeetings: (meetings) => set({ meetings }),
+      addMeeting: (meeting) =>
+        set((state) => ({
+          meetings: state.meetings.some((m) => m.id === meeting.id)
+            ? state.meetings
+            : [...state.meetings, meeting],
+        })),
+      updateMeeting: (id, updates) =>
+        set((state) => ({
+          meetings: state.meetings.map((m) =>
+            m.id === id ? { ...m, ...updates } : m
+          ),
+        })),
+      activeMeetingId: null,
+      setActiveMeetingId: (activeMeetingId) => set({ activeMeetingId }),
 
       // Profiles
       profiles: {},
