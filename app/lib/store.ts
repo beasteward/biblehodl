@@ -1,0 +1,144 @@
+import { create } from "zustand";
+import { persist } from "zustand/middleware";
+import type { NostrKeys } from "./nostr";
+
+export type View = "chat" | "calendar" | "meetings" | "files";
+
+export interface ChatMessage {
+  id: string;
+  pubkey: string;
+  content: string;
+  created_at: number;
+  channelId?: string;
+}
+
+export interface Channel {
+  id: string;
+  name: string;
+  about?: string;
+  picture?: string;
+  isDirectMessage?: boolean;
+  participants?: string[];
+  lastMessage?: ChatMessage;
+}
+
+export interface CalendarEvent {
+  id: string;
+  title: string;
+  description?: string;
+  start: number;
+  end?: number;
+  location?: string;
+  pubkey: string;
+}
+
+export interface Profile {
+  pubkey: string;
+  name?: string;
+  displayName?: string;
+  picture?: string;
+  about?: string;
+  nip05?: string;
+}
+
+interface AppState {
+  // Auth
+  keys: NostrKeys | null;
+  setKeys: (keys: NostrKeys | null) => void;
+
+  // Navigation
+  currentView: View;
+  setCurrentView: (view: View) => void;
+
+  // Chat
+  channels: Channel[];
+  setChannels: (channels: Channel[]) => void;
+  addChannel: (channel: Channel) => void;
+  activeChannelId: string | null;
+  setActiveChannelId: (id: string | null) => void;
+  messages: Record<string, ChatMessage[]>;
+  addMessage: (channelId: string, message: ChatMessage) => void;
+
+  // Calendar
+  calendarEvents: CalendarEvent[];
+  setCalendarEvents: (events: CalendarEvent[]) => void;
+  addCalendarEvent: (event: CalendarEvent) => void;
+
+  // Profiles cache
+  profiles: Record<string, Profile>;
+  setProfile: (pubkey: string, profile: Profile) => void;
+
+  // Connection
+  connectedRelays: string[];
+  setConnectedRelays: (relays: string[]) => void;
+}
+
+export const useAppStore = create<AppState>()(
+  persist(
+    (set) => ({
+      // Auth
+      keys: null,
+      setKeys: (keys) => set({ keys }),
+
+      // Navigation
+      currentView: "chat",
+      setCurrentView: (currentView) => set({ currentView }),
+
+      // Chat
+      channels: [],
+      setChannels: (channels) => set({ channels }),
+      addChannel: (channel) =>
+        set((state) => ({
+          channels: state.channels.some((c) => c.id === channel.id)
+            ? state.channels
+            : [...state.channels, channel],
+        })),
+      activeChannelId: null,
+      setActiveChannelId: (activeChannelId) => set({ activeChannelId }),
+      messages: {},
+      addMessage: (channelId, message) =>
+        set((state) => {
+          const existing = state.messages[channelId] || [];
+          if (existing.some((m) => m.id === message.id)) return state;
+          return {
+            messages: {
+              ...state.messages,
+              [channelId]: [...existing, message].sort(
+                (a, b) => a.created_at - b.created_at
+              ),
+            },
+          };
+        }),
+
+      // Calendar
+      calendarEvents: [],
+      setCalendarEvents: (calendarEvents) => set({ calendarEvents }),
+      addCalendarEvent: (event) =>
+        set((state) => ({
+          calendarEvents: state.calendarEvents.some((e) => e.id === event.id)
+            ? state.calendarEvents
+            : [...state.calendarEvents, event],
+        })),
+
+      // Profiles
+      profiles: {},
+      setProfile: (pubkey, profile) =>
+        set((state) => ({
+          profiles: { ...state.profiles, [pubkey]: profile },
+        })),
+
+      // Connection
+      connectedRelays: [],
+      setConnectedRelays: (connectedRelays) => set({ connectedRelays }),
+    }),
+    {
+      name: "nostr-teams-storage",
+      partialize: (state) => ({
+        // Only persist keys and view preference
+        keys: state.keys,
+        currentView: state.currentView,
+        channels: state.channels,
+      }),
+    }
+  )
+);

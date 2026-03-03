@@ -1,0 +1,43 @@
+@import "tailwindcss";
+
+:root {
+  /* Teams-inspired dark theme */
+  --bg-primary: #1b1a2e;
+  --bg-secondary: #252440;
+  --bg-tertiary: #2d2b4e;
+  --bg-hover: #3d3a6e;
+  --bg-active: #4b48a0;
+  --text-primary: #e8e6f0;
+  --text-secondary: #a09cb5;
+  --text-muted: #6b6785;
+  --accent: #6264a7;
+  --accent-hover: #7b7dbd;
+  --accent-light: #8b8cc7;
+  --border: #3d3a5c;
+  --success: #43b581;
+  --danger: #ed4245;
+  --warning: #faa61a;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  background: var(--bg-primary);
+  color: var(--text-primary);
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+}
+
+/* Scrollbar styling */
+::-webkit-scrollbar {
+  width: 6px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: var(--border);
+  border-radius: 3px;
+}
