@@ -7,6 +7,11 @@ next-env.d.ts
 /app/generated/prisma
 -e 
 .env
+.env.local
+.env.production.local
 prisma/dev.db
 prisma/dev.db-journal
 dev.db
+prisma/production.db
+prisma/production.db-journal
+prisma/production.db*
