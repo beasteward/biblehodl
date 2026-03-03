@@ -12,12 +12,14 @@ import ChatView from "../chat/ChatView";
 import CalendarView from "../calendar/CalendarView";
 import MeetingsView from "../meetings/MeetingsView";
 import FilesView from "../files/FilesView";
+import GamesView from "../games/GamesView";
 
 const views: Record<View, React.ComponentType> = {
   chat: ChatView,
   calendar: CalendarView,
   meetings: MeetingsView,
   files: FilesView,
+  games: GamesView,
 };
 
 export default function AppShell() {

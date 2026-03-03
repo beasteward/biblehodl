@@ -26,6 +26,7 @@ export default function Sidebar() {
           {currentView === "calendar" && "Calendar"}
           {currentView === "meetings" && "Meetings"}
           {currentView === "files" && "Files"}
+          {currentView === "games" && "Games"}
         </h2>
       </div>
 
@@ -65,6 +66,11 @@ export default function Sidebar() {
         {currentView === "files" && (
           <div className="p-4 text-sm" style={{ color: "var(--text-secondary)" }}>
             Drag &amp; drop files into the main area or click Upload.
+          </div>
+        )}
+        {currentView === "games" && (
+          <div className="p-4 text-sm" style={{ color: "var(--text-secondary)" }}>
+            Create and play quiz games to reinforce learning.
           </div>
         )}
       </div>

@@ -7,6 +7,7 @@ const navItems: { view: View; icon: string; label: string }[] = [
   { view: "calendar", icon: "📅", label: "Calendar" },
   { view: "meetings", icon: "👥", label: "Meetings" },
   { view: "files", icon: "📁", label: "Files" },
+  { view: "games", icon: "🎮", label: "Games" },
 ];
 
 export default function ActivityBar() {
