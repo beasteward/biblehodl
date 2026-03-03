@@ -3,6 +3,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "../../../../../../lib/prisma";
 import { getPubkeyFromRequest } from "../../../../../../lib/auth";
+import { emitGameEvent } from "../events/route";
 
 export async function POST(
   request: NextRequest,
@@ -37,6 +38,11 @@ export async function POST(
       pubkey,
       displayName: displayName || pubkey.slice(0, 8),
     },
+  });
+
+  emitGameEvent(sessionId, "player-joined", {
+    pubkey: player.pubkey,
+    displayName: player.displayName,
   });
 
   return NextResponse.json(player, { status: 201 });

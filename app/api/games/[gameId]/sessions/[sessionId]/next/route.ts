@@ -3,6 +3,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "../../../../../../lib/prisma";
 import { getPubkeyFromRequest } from "../../../../../../lib/auth";
+import { emitGameEvent } from "../events/route";
 
 export async function POST(
   request: NextRequest,
@@ -42,6 +43,13 @@ export async function POST(
         players: { orderBy: { score: "desc" } },
       },
     });
+    emitGameEvent(sessionId, "game-finished", {
+      leaderboard: updated.players.map((p) => ({
+        pubkey: p.pubkey,
+        displayName: p.displayName,
+        score: p.score,
+      })),
+    });
     return NextResponse.json({ ...updated, finished: true });
   }
 
@@ -62,10 +70,18 @@ export async function POST(
     select: { id: true, text: true, options: true, order: true },
   });
 
-  return NextResponse.json({
+  const responseData = {
     session: updated,
     question: question
       ? { ...question, options: JSON.parse(question.options) }
       : null,
+  };
+
+  emitGameEvent(sessionId, "next-question", {
+    questionIndex: nextIndex,
+    question: responseData.question,
+    totalQuestions: questionCount,
   });
+
+  return NextResponse.json(responseData);
 }
