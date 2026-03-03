@@ -7,11 +7,15 @@ import {
 } from "nostr-tools";
 import { Relay } from "nostr-tools/relay";
 
-// Default relays
-export const DEFAULT_RELAYS = [
-  "wss://relay.primal.net",
-  "wss://relay.damus.io",
-];
+// Default relays — uses private relay if configured, falls back to public relays
+const PRIVATE_RELAY = process.env.NEXT_PUBLIC_RELAY_URL;
+
+export const DEFAULT_RELAYS = PRIVATE_RELAY
+  ? [PRIVATE_RELAY]
+  : [
+      "wss://relay.primal.net",
+      "wss://relay.damus.io",
+    ];
 
 // NIP-28 kinds
 export const KIND_CHANNEL_CREATE = 40;

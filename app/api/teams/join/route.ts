@@ -3,6 +3,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "../../../lib/prisma";
 import { getPubkeyFromRequest } from "../../../lib/auth";
+import { addPubkeyToRelay } from "../../../lib/relay-sync";
 
 export async function POST(request: NextRequest) {
   const pubkey = getPubkeyFromRequest(request);
@@ -57,6 +58,9 @@ export async function POST(request: NextRequest) {
       data: { usedBy: pubkey, usedAt: new Date() },
     }),
   ]);
+
+  // Sync with private relay whitelist
+  await addPubkeyToRelay(pubkey);
 
   return NextResponse.json({
     member,

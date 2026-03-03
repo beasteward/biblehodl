@@ -4,6 +4,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "../../lib/prisma";
 import { getPubkeyFromRequest } from "../../lib/auth";
+import { addPubkeyToRelay } from "../../lib/relay-sync";
 
 export async function GET(request: NextRequest) {
   const pubkey = getPubkeyFromRequest(request);
@@ -61,6 +62,9 @@ export async function POST(request: NextRequest) {
       members: true,
     },
   });
+
+  // Add owner to private relay whitelist
+  await addPubkeyToRelay(pubkey);
 
   return NextResponse.json(team, { status: 201 });
 }
