@@ -27,6 +27,7 @@ export default function Sidebar() {
           {currentView === "meetings" && "Meetings"}
           {currentView === "files" && "Files"}
           {currentView === "games" && "Games"}
+          {currentView === "team" && "Team"}
         </h2>
       </div>
 
@@ -71,6 +72,11 @@ export default function Sidebar() {
         {currentView === "games" && (
           <div className="p-4 text-sm" style={{ color: "var(--text-secondary)" }}>
             Create and play quiz games to reinforce learning.
+          </div>
+        )}
+        {currentView === "team" && (
+          <div className="p-4 text-sm" style={{ color: "var(--text-secondary)" }}>
+            Manage your team, members, and invite codes.
           </div>
         )}
       </div>

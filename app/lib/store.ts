@@ -2,7 +2,7 @@ import { create } from "zustand";
 import { persist } from "zustand/middleware";
 import type { NostrKeys } from "./nostr";
 
-export type View = "chat" | "calendar" | "meetings" | "files" | "games";
+export type View = "chat" | "calendar" | "meetings" | "files" | "games" | "team";
 
 export interface ChatMessage {
   id: string;

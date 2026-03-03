@@ -13,6 +13,7 @@ import CalendarView from "../calendar/CalendarView";
 import MeetingsView from "../meetings/MeetingsView";
 import FilesView from "../files/FilesView";
 import GamesView from "../games/GamesView";
+import TeamManager from "../team/TeamManager";
 
 const views: Record<View, React.ComponentType> = {
   chat: ChatView,
@@ -20,6 +21,7 @@ const views: Record<View, React.ComponentType> = {
   meetings: MeetingsView,
   files: FilesView,
   games: GamesView,
+  team: TeamManager,
 };
 
 export default function AppShell() {
