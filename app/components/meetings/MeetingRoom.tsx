@@ -9,6 +9,7 @@ import {
   updateMeetingStatus,
 } from "../../lib/meeting-service";
 import MeetingWhiteboard from "./MeetingWhiteboard";
+import MeetingFiles from "./MeetingFiles";
 
 interface Props {
   meetingId: string;
@@ -241,13 +242,7 @@ export default function MeetingRoom({ meetingId, onBack }: Props) {
       )}
 
       {activeTab === "files" && (
-        <div className="flex-1 flex items-center justify-center" style={{ color: "var(--text-muted)" }}>
-          <div className="text-center">
-            <div className="text-5xl mb-3">📁</div>
-            <p className="text-sm">Meeting documents coming soon</p>
-            <p className="text-xs mt-1">Upload & share files via BLOSSOM</p>
-          </div>
-        </div>
+        <MeetingFiles meetingId={meetingId} />
       )}
     </div>
   );
