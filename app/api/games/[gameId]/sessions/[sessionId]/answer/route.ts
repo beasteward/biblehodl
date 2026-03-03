@@ -3,6 +3,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "../../../../../../lib/prisma";
 import { getPubkeyFromRequest } from "../../../../../../lib/auth";
+import { emitGameEvent } from "../events/route";
 
 export async function POST(
   request: NextRequest,
@@ -80,6 +81,12 @@ export async function POST(
   await prisma.player.update({
     where: { id: player.id },
     data: { score: player.score + score },
+  });
+
+  // Emit that someone answered (without revealing their answer to others)
+  emitGameEvent(sessionId, "player-answered", {
+    pubkey,
+    questionId,
   });
 
   return NextResponse.json({

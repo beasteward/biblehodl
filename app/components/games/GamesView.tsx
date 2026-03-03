@@ -2,8 +2,9 @@
 
 import { useState, useEffect, useCallback } from "react";
 import { useAppStore } from "../../lib/store";
-import { fetchGames, deleteGame, type Game } from "../../lib/game-service";
+import { fetchGames, deleteGame, createSession, type Game } from "../../lib/game-service";
 import CreateGameModal from "./CreateGameModal";
+import GameSessionView from "./GameSession";
 
 function GameCard({
   game,
@@ -70,10 +71,32 @@ function GameCard({
 function GameDetail({
   game,
   onBack,
+  onPlay,
 }: {
   game: Game;
   onBack: () => void;
+  onPlay: (sessionId: string) => void;
 }) {
+  const keys = useAppStore((s) => s.keys);
+  const [startingSession, setStartingSession] = useState(false);
+  const isCreator = game.createdBy === keys?.publicKey;
+
+  const handleStartSession = async () => {
+    if (!keys) return;
+    setStartingSession(true);
+    try {
+      const session = await createSession(game.id, keys.publicKey);
+      onPlay(session.id);
+    } catch (err) {
+      console.error("Failed to create session:", err);
+    } finally {
+      setStartingSession(false);
+    }
+  };
+
+  // Check for active lobby to join
+  const activeLobby = game.sessions?.find((s) => s.status === "lobby");
+
   const questions = game.questions || [];
 
   return (
@@ -94,9 +117,30 @@ function GameDetail({
             <p className="text-xs" style={{ color: "var(--text-muted)" }}>{game.description}</p>
           )}
         </div>
-        <span className="text-xs" style={{ color: "var(--text-muted)" }}>
-          ⏱ {game.timePerQuestion}s · ❓ {questions.length} questions
-        </span>
+        <div className="flex items-center gap-2">
+          <span className="text-xs" style={{ color: "var(--text-muted)" }}>
+            ⏱ {game.timePerQuestion}s · ❓ {questions.length} questions
+          </span>
+          {activeLobby && (
+            <button
+              onClick={() => onPlay(activeLobby.id)}
+              className="px-4 py-2 rounded text-sm font-medium"
+              style={{ background: "#22c55e", color: "white" }}
+            >
+              🎮 Join Game
+            </button>
+          )}
+          {isCreator && !activeLobby && (
+            <button
+              onClick={handleStartSession}
+              disabled={startingSession}
+              className="px-4 py-2 rounded text-sm font-medium disabled:opacity-50"
+              style={{ background: "var(--accent)", color: "white" }}
+            >
+              {startingSession ? "Starting..." : "▶ Host Game"}
+            </button>
+          )}
+        </div>
       </div>
 
       {/* Questions preview */}
@@ -173,6 +217,14 @@ export default function GamesView() {
   const [showCreate, setShowCreate] = useState(false);
   const [selectedGame, setSelectedGame] = useState<Game | null>(null);
   const [filter, setFilter] = useState<"all" | "mine">("all");
+  const [activeSession, setActiveSession] = useState<{
+    gameId: string;
+    sessionId: string;
+    gameTitle: string;
+    timePerQuestion: number;
+    isAdmin: boolean;
+    totalQuestions: number;
+  } | null>(null);
 
   const loadGames = useCallback(async () => {
     setLoading(true);
@@ -210,8 +262,40 @@ export default function GamesView() {
     }
   };
 
+  const handlePlay = (game: Game, sessionId: string) => {
+    setActiveSession({
+      gameId: game.id,
+      sessionId,
+      gameTitle: game.title,
+      timePerQuestion: game.timePerQuestion,
+      isAdmin: game.createdBy === keys?.publicKey,
+      totalQuestions: game.questions?.length || game._count?.questions || 0,
+    });
+  };
+
+  // Active game session
+  if (activeSession) {
+    return (
+      <GameSessionView
+        gameId={activeSession.gameId}
+        sessionId={activeSession.sessionId}
+        gameTitle={activeSession.gameTitle}
+        timePerQuestion={activeSession.timePerQuestion}
+        isAdmin={activeSession.isAdmin}
+        totalQuestions={activeSession.totalQuestions}
+        onExit={() => { setActiveSession(null); loadGames(); }}
+      />
+    );
+  }
+
   if (selectedGame) {
-    return <GameDetail game={selectedGame} onBack={() => setSelectedGame(null)} />;
+    return (
+      <GameDetail
+        game={selectedGame}
+        onBack={() => setSelectedGame(null)}
+        onPlay={(sessionId) => handlePlay(selectedGame, sessionId)}
+      />
+    );
   }
 
   return (
