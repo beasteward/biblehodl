@@ -1,14 +1,12 @@
 "use client";
 
-import { useEffect, useCallback, useRef } from "react";
+import { useEffect, useCallback, useRef, useState } from "react";
 import { Tldraw, type Editor } from "tldraw";
 import "tldraw/tldraw.css";
 import { useAppStore } from "../../lib/store";
 import {
-  publishWhiteboardPatch,
-  subscribeToWhiteboardPatches,
-  unsubscribeFromWhiteboard,
-  type WhiteboardPatch,
+  saveWhiteboard,
+  loadLatestWhiteboard,
 } from "../../lib/whiteboard-service";
 
 interface Props {
@@ -18,105 +16,115 @@ interface Props {
 export default function MeetingWhiteboard({ meetingId }: Props) {
   const keys = useAppStore((s) => s.keys);
   const editorRef = useRef<Editor | null>(null);
-  const isApplyingRemote = useRef(false);
-  const debounceTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const pendingChanges = useRef<{
-    added: Record<string, unknown>[];
-    updated: Record<string, unknown>[];
-    removed: string[];
-  }>({ added: [], updated: [], removed: [] });
+  const [saving, setSaving] = useState(false);
+  const [loading, setLoading] = useState(true);
+  const [lastSaved, setLastSaved] = useState<string | null>(null);
+  const [hasChanges, setHasChanges] = useState(false);
 
-  // Flush pending changes to Nostr
-  const flushChanges = useCallback(() => {
-    if (!keys) return;
-    const { added, updated, removed } = pendingChanges.current;
-    if (added.length === 0 && updated.length === 0 && removed.length === 0) return;
+  // Load saved whiteboard on mount
+  useEffect(() => {
+    let cancelled = false;
 
-    const patch: { added?: Record<string, unknown>[]; updated?: Record<string, unknown>[]; removed?: string[] } = {};
-    if (added.length > 0) patch.added = [...added];
-    if (updated.length > 0) patch.updated = [...updated];
-    if (removed.length > 0) patch.removed = [...removed];
-
-    pendingChanges.current = { added: [], updated: [], removed: [] };
-    publishWhiteboardPatch(meetingId, patch, keys.privateKey).catch(console.error);
-  }, [keys, meetingId]);
-
-  // Handle incoming remote patches
-  const handleRemotePatch = useCallback(
-    (patch: WhiteboardPatch, pubkey: string) => {
-      const editor = editorRef.current;
-      if (!editor || pubkey === keys?.publicKey) return;
-
-      isApplyingRemote.current = true;
+    async function load() {
+      setLoading(true);
       try {
-        if (patch.added && patch.added.length > 0) {
-          editor.createShapes(patch.added as Parameters<Editor["createShapes"]>[0]);
-        }
-        if (patch.updated && patch.updated.length > 0) {
-          editor.updateShapes(patch.updated as Parameters<Editor["updateShapes"]>[0]);
-        }
-        if (patch.removed && patch.removed.length > 0) {
-          editor.deleteShapes(patch.removed as unknown as Parameters<Editor["deleteShapes"]>[0]);
+        const result = await loadLatestWhiteboard(meetingId);
+        if (cancelled || !editorRef.current) return;
+
+        if (result) {
+          const snapshot = JSON.parse(result.snapshotJson);
+          editorRef.current.store.loadStoreSnapshot(snapshot);
+          setLastSaved(new Date(result.meta.timestamp).toLocaleTimeString());
+          setHasChanges(false);
         }
       } catch (err) {
-        console.warn("[whiteboard] Failed to apply remote patch:", err);
+        console.warn("[whiteboard] Failed to load saved state:", err);
       } finally {
-        isApplyingRemote.current = false;
+        if (!cancelled) setLoading(false);
       }
-    },
-    [keys]
-  );
+    }
 
-  // Subscribe to remote patches
-  useEffect(() => {
-    subscribeToWhiteboardPatches(meetingId, handleRemotePatch);
-    return () => unsubscribeFromWhiteboard(meetingId);
-  }, [meetingId, handleRemotePatch]);
+    // Small delay to ensure editor is ready
+    const timer = setTimeout(load, 500);
+    return () => {
+      cancelled = true;
+      clearTimeout(timer);
+    };
+  }, [meetingId]);
 
-  // Set up editor change listener
-  const handleMount = useCallback(
-    (editor: Editor) => {
-      editorRef.current = editor;
+  // Save to BLOSSOM
+  const handleSave = useCallback(async () => {
+    if (!keys || !editorRef.current) return;
+    setSaving(true);
+    try {
+      const snapshot = editorRef.current.store.getStoreSnapshot();
+      const snapshotJson = JSON.stringify(snapshot);
+      await saveWhiteboard(meetingId, snapshotJson, keys.privateKey);
+      setLastSaved(new Date().toLocaleTimeString());
+      setHasChanges(false);
+    } catch (err) {
+      console.error("[whiteboard] Failed to save:", err);
+    } finally {
+      setSaving(false);
+    }
+  }, [keys, meetingId]);
 
-      // Listen to store changes
-      editor.store.listen(
-        ({ changes }) => {
-          if (isApplyingRemote.current) return;
+  // Track changes
+  const handleMount = useCallback((editor: Editor) => {
+    editorRef.current = editor;
 
-          // Collect added shapes
-          for (const record of Object.values(changes.added)) {
-            if ((record as { typeName?: string }).typeName === "shape") {
-              pendingChanges.current.added.push(record as unknown as Record<string, unknown>);
-            }
-          }
-
-          // Collect updated shapes
-          for (const [, to] of Object.values(changes.updated)) {
-            if ((to as { typeName?: string }).typeName === "shape") {
-              pendingChanges.current.updated.push(to as unknown as Record<string, unknown>);
-            }
-          }
-
-          // Collect removed shapes
-          for (const record of Object.values(changes.removed)) {
-            if ((record as { typeName?: string }).typeName === "shape") {
-              pendingChanges.current.removed.push((record as { id: string }).id);
-            }
-          }
-
-          // Debounce: batch changes every 200ms
-          if (debounceTimer.current) clearTimeout(debounceTimer.current);
-          debounceTimer.current = setTimeout(flushChanges, 200);
-        },
-        { source: "user", scope: "document" }
-      );
-    },
-    [flushChanges]
-  );
+    editor.store.listen(
+      () => {
+        setHasChanges(true);
+      },
+      { source: "user", scope: "document" }
+    );
+  }, []);
 
   return (
-    <div className="flex-1 relative" style={{ minHeight: 0 }}>
-      <Tldraw onMount={handleMount} />
+    <div className="flex-1 flex flex-col min-h-0">
+      {/* Toolbar */}
+      <div
+        className="flex items-center justify-between px-4 py-2 border-b"
+        style={{ borderColor: "var(--border)", background: "var(--bg-secondary)" }}
+      >
+        <div className="flex items-center gap-3">
+          <span className="text-sm font-medium" style={{ color: "var(--text-primary)" }}>
+            🎨 Whiteboard
+          </span>
+          {loading && (
+            <span className="text-xs" style={{ color: "var(--text-muted)" }}>
+              Loading...
+            </span>
+          )}
+          {lastSaved && !loading && (
+            <span className="text-xs" style={{ color: "var(--text-muted)" }}>
+              Last saved: {lastSaved}
+            </span>
+          )}
+          {hasChanges && !loading && (
+            <span className="text-xs font-medium" style={{ color: "#f59e0b" }}>
+              • Unsaved changes
+            </span>
+          )}
+        </div>
+        <button
+          onClick={handleSave}
+          disabled={saving || !hasChanges}
+          className="px-4 py-1.5 rounded text-sm font-medium disabled:opacity-50 transition-opacity"
+          style={{
+            background: hasChanges ? "var(--accent)" : "var(--bg-tertiary)",
+            color: hasChanges ? "white" : "var(--text-muted)",
+          }}
+        >
+          {saving ? "Saving..." : "💾 Save"}
+        </button>
+      </div>
+
+      {/* tldraw Canvas */}
+      <div className="flex-1 relative" style={{ minHeight: 0 }}>
+        <Tldraw onMount={handleMount} />
+      </div>
     </div>
   );
 }
