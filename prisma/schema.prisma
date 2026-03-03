@@ -1,0 +1,80 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+model Game {
+  id               String     @id @default(cuid())
+  title            String
+  description      String     @default("")
+  createdBy        String
+  timePerQuestion  Int        @default(20)
+  createdAt        DateTime   @default(now())
+  updatedAt        DateTime   @updatedAt
+  questions        Question[]
+  sessions         GameSession[]
+}
+
+model Question {
+  id           String   @id @default(cuid())
+  gameId       String
+  text         String
+  options      String
+  correctIndex Int
+  order        Int
+  game         Game     @relation(fields: [gameId], references: [id], onDelete: Cascade)
+  answers      Answer[]
+
+  @@index([gameId])
+}
+
+model GameSession {
+  id                   String   @id @default(cuid())
+  gameId               String
+  status               String   @default("lobby")
+  currentQuestionIndex Int      @default(-1)
+  questionStartedAt    DateTime?
+  startedAt            DateTime?
+  finishedAt           DateTime?
+  createdAt            DateTime @default(now())
+  game                 Game     @relation(fields: [gameId], references: [id], onDelete: Cascade)
+  players              Player[]
+  answers              Answer[]
+
+  @@index([gameId])
+}
+
+model Player {
+  id          String      @id @default(cuid())
+  sessionId   String
+  pubkey      String
+  displayName String
+  score       Int         @default(0)
+  joinedAt    DateTime    @default(now())
+  session     GameSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+
+  @@unique([sessionId, pubkey])
+  @@index([sessionId])
+}
+
+model Answer {
+  id             String      @id @default(cuid())
+  sessionId      String
+  questionId     String
+  playerPubkey   String
+  selectedIndex  Int
+  correct        Boolean
+  responseTimeMs Int
+  score          Int         @default(0)
+  answeredAt     DateTime    @default(now())
+  session        GameSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  question       Question    @relation(fields: [questionId], references: [id], onDelete: Cascade)
+
+  @@unique([sessionId, questionId, playerPubkey])
+  @@index([sessionId])
+  @@index([questionId])
+}
