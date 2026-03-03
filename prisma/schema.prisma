@@ -7,6 +7,50 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
+// ─── Team & Access Control ───
+
+model Team {
+  id          String     @id @default(cuid())
+  name        String
+  description String     @default("")
+  relayUrl    String     @default("")
+  createdBy   String
+  createdAt   DateTime   @default(now())
+  updatedAt   DateTime   @updatedAt
+  members     Member[]
+  invites     Invite[]
+}
+
+model Member {
+  id        String   @id @default(cuid())
+  teamId    String
+  pubkey    String
+  role      String   @default("member") // owner | admin | member
+  joinedAt  DateTime @default(now())
+  team      Team     @relation(fields: [teamId], references: [id], onDelete: Cascade)
+
+  @@unique([teamId, pubkey])
+  @@index([teamId])
+  @@index([pubkey])
+}
+
+model Invite {
+  id        String    @id @default(cuid())
+  teamId    String
+  code      String    @unique
+  createdBy String
+  usedBy    String?
+  usedAt    DateTime?
+  expiresAt DateTime
+  createdAt DateTime  @default(now())
+  team      Team      @relation(fields: [teamId], references: [id], onDelete: Cascade)
+
+  @@index([teamId])
+  @@index([code])
+}
+
+// ─── Games ───
+
 model Game {
   id               String     @id @default(cuid())
   title            String
