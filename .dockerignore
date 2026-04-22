@@ -7,3 +7,6 @@ data/
 .env
 .env.local
 .DS_Store
+blossom-server/
+docs/
+config/
