@@ -100,8 +100,8 @@ if [ "$KEY_CHOICE" = "2" ]; then
     exit 1
   fi
   # Derive npub from nsec
-  KEYS_JSON=$(node -e "
-    const { nip19, getPublicKey } = require('nostr-tools');
+  KEYS_JSON=$(node --input-type=module -e "
+    import { nip19, getPublicKey } from 'nostr-tools';
     const { data: sk } = nip19.decode('$ADMIN_NSEC');
     const pk = getPublicKey(sk);
     console.log(JSON.stringify({
@@ -115,8 +115,8 @@ if [ "$KEY_CHOICE" = "2" ]; then
   }
 else
   # Generate new keypair
-  KEYS_JSON=$(node -e "
-    const { generateSecretKey, getPublicKey, nip19 } = require('nostr-tools');
+  KEYS_JSON=$(node --input-type=module -e "
+    import { generateSecretKey, getPublicKey, nip19 } from 'nostr-tools';
     const sk = generateSecretKey();
     const pk = getPublicKey(sk);
     console.log(JSON.stringify({
