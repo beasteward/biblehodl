@@ -121,12 +121,16 @@ A self-hostable community platform for small groups (50-300 users) built on Nost
 ```
 User Registration Flow:
 ─────────────────────────────────────────────────────
-1. User provides Nostr npub + email address
-2. Email verification sent
-3. Admin approves the user
-4. npub added to app whitelist (Prisma/SQLite)
-5. npub synced to relay whitelist (nostr-rs-relay SQLite)
-6. User can now access all services
+1. Admin creates a one-time invite code in admin panel
+2. Admin shares invite code with the person (text, email, in person)
+3. User visits app.{domain}/join
+4. User logs in with Nostr keypair (nsec)
+5. User enters: first name, last name, email, invite code
+6. Server validates invite code
+7. npub added to app whitelist (Prisma/SQLite)
+8. npub synced to relay whitelist (nostr-rs-relay SQLite)
+9. Invite marked as used (one-time)
+10. User can now access all services
 
 Request Auth Flow:
 ─────────────────────────────────────────────────────
@@ -253,12 +257,12 @@ Recommended VPS: 2-4 vCPU, 4GB RAM, 40GB+ disk. Cost: $5-15/mo.
 7. Test full stack locally
 
 ### Phase 2: Auth & Access Control
-8. Add email field to member registration
-9. Add email verification flow
+8. Add registration page (/join) — first name, last name, email, invite code
+9. Update Prisma schema — add firstName, lastName, email to Member model
 10. Build server-side auth middleware (SSR page protection)
 11. Implement relay whitelist sync (write to nostr-rs-relay SQLite)
 12. Add Blossom whitelist enforcement
-13. Build admin panel (approve/deny members, manage whitelist)
+13. Build admin panel (manage members, generate/revoke invite codes, view whitelist)
 
 ### Phase 3: Deploy & Distribution
 14. Create `.env.example` + setup documentation
@@ -276,8 +280,8 @@ Recommended VPS: 2-4 vCPU, 4GB RAM, 40GB+ disk. Cost: $5-15/mo.
 
 ## Open Questions
 
-- [ ] Should the CPDV Bible API run per-community or shared? (Current assumption: shared on Railway, optional local)
-- [ ] Email provider for verification? (Resend, SendGrid, self-hosted SMTP?)
-- [ ] Should communities be able to federate relay events with each other?
-- [ ] Custom branding per community? (Logo, name, colors)
-- [ ] Mobile app planned, or web-only?
+- [x] ~~CPDV Bible API shared or per-community?~~ Shared on Railway, communities get an API key.
+- [x] ~~Email provider for verification?~~ Not needed — invite codes are the trust mechanism. Email captured at registration for contact purposes only.
+- [x] ~~Relay federation?~~ No for now.
+- [x] ~~Custom branding?~~ Yes, lightweight via env vars (COMMUNITY_NAME, COMMUNITY_LOGO_URL, PRIMARY_COLOR).
+- [x] ~~Mobile app?~~ Web-only, PWA-capable.
