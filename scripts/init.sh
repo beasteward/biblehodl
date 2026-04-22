@@ -134,21 +134,26 @@ ADMIN_NSEC=$(echo "$KEYS_JSON" | node -e "process.stdout.write(JSON.parse(requir
 ADMIN_NPUB=$(echo "$KEYS_JSON" | node -e "process.stdout.write(JSON.parse(require('fs').readFileSync(0,'utf8')).npub)")
 ADMIN_PUBKEY=$(echo "$KEYS_JSON" | node -e "process.stdout.write(JSON.parse(require('fs').readFileSync(0,'utf8')).pubkey)")
 
-# ─── Show keys immediately ───
-echo ""
-echo -e "────────────────────────────────────────"
-echo -e "${BOLD}${CYAN}Admin Nostr Keys${NC}"
-echo -e "────────────────────────────────────────"
-echo -e "${BOLD}npub:${NC} $ADMIN_NPUB"
-echo -e "${BOLD}${RED}nsec:${NC} $ADMIN_NSEC"
-echo ""
-echo -e "${YELLOW}⚠️  SAVE THESE NOW — the nsec will not be stored anywhere after this.${NC}"
-echo -e "────────────────────────────────────────"
-echo ""
-read -p "Press Enter once you've saved the keys..." _WAIT
-
-echo ""
-echo -e "${GREEN}✓ Keys saved. Continuing setup...${NC}"
+# ─── Show keys ───
+if [ "$KEY_CHOICE" != "2" ]; then
+  # Only show save prompt for newly generated keys
+  echo ""
+  echo -e "────────────────────────────────────────"
+  echo -e "${BOLD}${CYAN}Your New Nostr Keys${NC}"
+  echo -e "────────────────────────────────────────"
+  echo -e "${BOLD}npub:${NC} $ADMIN_NPUB"
+  echo -e "${BOLD}${RED}nsec:${NC} $ADMIN_NSEC"
+  echo ""
+  echo -e "${YELLOW}⚠️  SAVE THESE NOW — the nsec will not be stored anywhere after this.${NC}"
+  echo -e "────────────────────────────────────────"
+  echo ""
+  read -p "Press Enter once you've saved the keys..." _WAIT
+  echo ""
+  echo -e "${GREEN}✓ Keys saved. Continuing setup...${NC}"
+else
+  echo ""
+  echo -e "${GREEN}✓ Keypair verified.${NC} npub: ${ADMIN_NPUB:0:20}..."
+fi
 echo ""
 
 # ─── Generate secrets ───
