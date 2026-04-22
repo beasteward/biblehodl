@@ -23,7 +23,9 @@ RUN addgroup -g 1001 -S nodejs && adduser -S nextjs -u 1001
 # Copy standalone output
 COPY --from=build /app/.next/standalone ./
 COPY --from=build /app/.next/static ./.next/static
-COPY --from=build /app/public ./public
+
+# Copy public dir if it exists (optional)
+RUN mkdir -p ./public
 
 # Copy prisma for runtime migrations
 COPY --from=build /app/prisma ./prisma
