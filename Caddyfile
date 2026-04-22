@@ -7,7 +7,7 @@ relay.{$DOMAIN} {
 }
 
 files.{$DOMAIN} {
-	reverse_proxy blossom:3100
+	reverse_proxy blossom:3000
 }
 
 # Uncomment when running local CPDV Bible API:
