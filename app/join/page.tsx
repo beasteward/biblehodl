@@ -12,7 +12,9 @@ export default function JoinPage() {
   const setIsRegistered = useAppStore((s) => s.setIsRegistered);
   const setMemberProfile = useAppStore((s) => s.setMemberProfile);
 
-  const [step, setStep] = useState<"keys" | "register">(keys ? "register" : "keys");
+  const [step, setStep] = useState<"keys" | "save" | "register">(keys ? "register" : "keys");
+  const [savedConfirmed, setSavedConfirmed] = useState(false);
+  const [copied, setCopied] = useState<"nsec" | "npub" | null>(null);
   const [nsecInput, setNsecInput] = useState("");
   const [keyError, setKeyError] = useState("");
   const [keyMode, setKeyMode] = useState<"login" | "generate">("login");
@@ -38,7 +40,25 @@ export default function JoinPage() {
   const handleKeyGenerate = () => {
     const k = generateKeys();
     setKeys(k);
-    setStep("register");
+    setStep("save");
+  };
+
+  const copyToClipboard = (text: string, label: "nsec" | "npub") => {
+    navigator.clipboard.writeText(text);
+    setCopied(label);
+    setTimeout(() => setCopied(null), 2000);
+  };
+
+  const downloadKeys = () => {
+    if (!keys) return;
+    const content = `NOSTR KEYS — KEEP THIS FILE SAFE\n\nPublic Key (npub):\n${keys.npub}\n\nPrivate Key (nsec) — NEVER SHARE THIS:\n${keys.nsec}\n\nGenerated: ${new Date().toISOString()}\n`;
+    const blob = new Blob([content], { type: "text/plain" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = "nostr-keys.txt";
+    a.click();
+    URL.revokeObjectURL(url);
   };
 
   const handleRegister = async () => {
@@ -135,7 +155,7 @@ export default function JoinPage() {
             <>
               <div className="mb-6 p-4 rounded-lg" style={{ background: "var(--bg-tertiary)" }}>
                 <p className="text-sm mb-3" style={{ color: "var(--warning)" }}>
-                  ⚠️ A new NOSTR keypair will be generated. <strong>Save your nsec key</strong> — it cannot be recovered!
+                  ⚠️ A new NOSTR keypair will be generated. You&apos;ll be able to save your keys on the next screen.
                 </p>
               </div>
               <button
@@ -156,6 +176,98 @@ export default function JoinPage() {
               </div>
             </>
           )
+        ) : step === "save" ? (
+          // Step 1.5: Save your keys
+          <>
+            <div className="mb-4 p-4 rounded-lg" style={{ background: "var(--bg-tertiary)", border: "1px solid var(--warning)" }}>
+              <p className="text-sm font-medium mb-1" style={{ color: "var(--warning)" }}>
+                ⚠️ Save your keys now!
+              </p>
+              <p className="text-xs" style={{ color: "var(--text-secondary)" }}>
+                Your private key (nsec) is the <strong>only way</strong> to access your account. It cannot be recovered if lost.
+              </p>
+            </div>
+
+            <div className="space-y-3 mb-4">
+              <div>
+                <label className="block text-xs mb-1 font-medium" style={{ color: "var(--text-secondary)" }}>Public Key (npub)</label>
+                <div className="flex gap-2">
+                  <input
+                    type="text"
+                    readOnly
+                    value={keys?.npub || ""}
+                    className="flex-1 px-3 py-2 rounded-lg text-xs outline-none font-mono"
+                    style={inputStyle}
+                  />
+                  <button
+                    onClick={() => keys && copyToClipboard(keys.npub, "npub")}
+                    className="px-3 py-2 rounded-lg text-xs whitespace-nowrap cursor-pointer transition-colors"
+                    style={{ background: copied === "npub" ? "var(--success)" : "var(--bg-tertiary)", color: copied === "npub" ? "white" : "var(--text-secondary)", border: "1px solid var(--border)" }}
+                  >
+                    {copied === "npub" ? "✓ Copied" : "Copy"}
+                  </button>
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-xs mb-1 font-medium" style={{ color: "var(--warning)" }}>Private Key (nsec) — never share this!</label>
+                <div className="flex gap-2">
+                  <input
+                    type="text"
+                    readOnly
+                    value={keys?.nsec || ""}
+                    className="flex-1 px-3 py-2 rounded-lg text-xs outline-none font-mono"
+                    style={inputStyle}
+                  />
+                  <button
+                    onClick={() => keys && copyToClipboard(keys.nsec, "nsec")}
+                    className="px-3 py-2 rounded-lg text-xs whitespace-nowrap cursor-pointer transition-colors"
+                    style={{ background: copied === "nsec" ? "var(--success)" : "var(--bg-tertiary)", color: copied === "nsec" ? "white" : "var(--text-secondary)", border: "1px solid var(--border)" }}
+                  >
+                    {copied === "nsec" ? "✓ Copied" : "Copy"}
+                  </button>
+                </div>
+              </div>
+            </div>
+
+            <button
+              onClick={downloadKeys}
+              className="w-full py-2 mb-4 rounded-lg text-sm transition-colors cursor-pointer"
+              style={{ background: "var(--bg-tertiary)", color: "var(--text-secondary)", border: "1px solid var(--border)" }}
+            >
+              📥 Download Keys as Text File
+            </button>
+
+            <label className="flex items-center gap-2 mb-4 cursor-pointer">
+              <input
+                type="checkbox"
+                checked={savedConfirmed}
+                onChange={(e) => setSavedConfirmed(e.target.checked)}
+                className="w-4 h-4 accent-current"
+                style={{ accentColor: "var(--accent)" }}
+              />
+              <span className="text-sm" style={{ color: "var(--text-secondary)" }}>I have saved my keys somewhere safe</span>
+            </label>
+
+            <button
+              onClick={() => setStep("register")}
+              disabled={!savedConfirmed}
+              className="w-full py-3 rounded-lg font-medium text-sm transition-colors cursor-pointer disabled:opacity-50"
+              style={{ background: "var(--accent)", color: "white" }}
+            >
+              Continue to Registration
+            </button>
+
+            <div className="mt-4 text-center">
+              <button
+                onClick={() => { setStep("keys"); setKeys(null); setSavedConfirmed(false); }}
+                className="text-sm underline cursor-pointer"
+                style={{ color: "var(--accent-light)" }}
+              >
+                Start over
+              </button>
+            </div>
+          </>
         ) : (
           // Step 2: Registration form
           <>
