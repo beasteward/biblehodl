@@ -2,7 +2,13 @@ import { create } from "zustand";
 import { persist } from "zustand/middleware";
 import type { NostrKeys } from "./nostr";
 
-export type View = "chat" | "calendar" | "meetings" | "files" | "games" | "team";
+export type View = "chat" | "calendar" | "meetings" | "files" | "games" | "team" | "admin";
+
+export interface MemberProfile {
+  firstName: string;
+  lastName: string;
+  email: string;
+}
 
 export interface ChatMessage {
   id: string;
@@ -58,6 +64,10 @@ interface AppState {
   // Auth
   keys: NostrKeys | null;
   setKeys: (keys: NostrKeys | null) => void;
+  isRegistered: boolean;
+  setIsRegistered: (val: boolean) => void;
+  memberProfile: MemberProfile | null;
+  setMemberProfile: (profile: MemberProfile | null) => void;
 
   // Navigation
   currentView: View;
@@ -100,6 +110,10 @@ export const useAppStore = create<AppState>()(
       // Auth
       keys: null,
       setKeys: (keys) => set({ keys }),
+      isRegistered: false,
+      setIsRegistered: (isRegistered) => set({ isRegistered }),
+      memberProfile: null,
+      setMemberProfile: (memberProfile) => set({ memberProfile }),
 
       // Navigation
       currentView: "chat",
@@ -177,6 +191,8 @@ export const useAppStore = create<AppState>()(
         keys: state.keys,
         currentView: state.currentView,
         channels: state.channels,
+        isRegistered: state.isRegistered,
+        memberProfile: state.memberProfile,
       }),
     }
   )

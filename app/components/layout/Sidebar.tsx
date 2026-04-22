@@ -28,6 +28,7 @@ export default function Sidebar() {
           {currentView === "files" && "Files"}
           {currentView === "games" && "Games"}
           {currentView === "team" && "Team"}
+          {currentView === "admin" && "Admin"}
         </h2>
       </div>
 
@@ -77,6 +78,11 @@ export default function Sidebar() {
         {currentView === "team" && (
           <div className="p-4 text-sm" style={{ color: "var(--text-secondary)" }}>
             Manage your team, members, and invite codes.
+          </div>
+        )}
+        {currentView === "admin" && (
+          <div className="p-4 text-sm" style={{ color: "var(--text-secondary)" }}>
+            Admin panel — manage members and invites.
           </div>
         )}
       </div>

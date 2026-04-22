@@ -25,6 +25,9 @@ model Member {
   id        String   @id @default(cuid())
   teamId    String
   pubkey    String
+  firstName String   @default("")
+  lastName  String   @default("")
+  email     String   @default("")
   role      String   @default("member") // owner | admin | member
   joinedAt  DateTime @default(now())
   team      Team     @relation(fields: [teamId], references: [id], onDelete: Cascade)

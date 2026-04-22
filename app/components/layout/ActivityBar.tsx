@@ -9,6 +9,7 @@ const navItems: { view: View; icon: string; label: string }[] = [
   { view: "files", icon: "📁", label: "Files" },
   { view: "games", icon: "🎮", label: "Games" },
   { view: "team", icon: "⚙️", label: "Team" },
+  { view: "admin", icon: "🛡️", label: "Admin" },
 ];
 
 export default function ActivityBar() {

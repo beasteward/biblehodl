@@ -14,6 +14,7 @@ import MeetingsView from "../meetings/MeetingsView";
 import FilesView from "../files/FilesView";
 import GamesView from "../games/GamesView";
 import TeamManager from "../team/TeamManager";
+import AdminPanel from "../admin/AdminPanel";
 
 const views: Record<View, React.ComponentType> = {
   chat: ChatView,
@@ -22,6 +23,7 @@ const views: Record<View, React.ComponentType> = {
   files: FilesView,
   games: GamesView,
   team: TeamManager,
+  admin: AdminPanel,
 };
 
 export default function AppShell() {

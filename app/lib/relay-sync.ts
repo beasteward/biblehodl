@@ -1,41 +1,50 @@
-// Relay Whitelist Sync — keeps the private relay's whitelist in sync with team members
-// Called from team member API routes when members are added/removed
+// Relay Whitelist Sync — writes member pubkeys to a whitelist file
+// The relay reads this file for pubkey_whitelist authorization
 
-const RELAY_ADMIN_URL = process.env.RELAY_ADMIN_URL || "http://localhost:3002";
-const RELAY_ADMIN_TOKEN = process.env.RELAY_ADMIN_TOKEN || "relay-admin-secret";
+import { prisma } from "./prisma";
+import { writeFile } from "fs/promises";
+import { join } from "path";
 
-async function relayRequest(method: string, path: string, body?: unknown) {
+const WHITELIST_PATH = process.env.RELAY_WHITELIST_PATH || join(process.cwd(), "data", "relay-whitelist.txt");
+
+/**
+ * Regenerate the relay whitelist file from all current members.
+ * Writes one hex pubkey per line.
+ * TODO: Send SIGHUP to relay or use a shared volume for auto-reload.
+ */
+export async function syncRelayWhitelist() {
   try {
-    const res = await fetch(`${RELAY_ADMIN_URL}${path}`, {
-      method,
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${RELAY_ADMIN_TOKEN}`,
-      },
-      body: body ? JSON.stringify(body) : undefined,
+    const members = await prisma.member.findMany({
+      select: { pubkey: true },
+      distinct: ["pubkey"],
     });
-    return res.json();
+
+    const pubkeys = members.map((m) => m.pubkey);
+    const content = pubkeys.join("\n") + "\n";
+
+    await writeFile(WHITELIST_PATH, content, "utf-8");
+    console.log(`[relay-sync] Wrote ${pubkeys.length} pubkeys to ${WHITELIST_PATH}`);
+    console.log("[relay-sync] NOTE: Relay may need restart to pick up changes");
+
+    return pubkeys;
   } catch (err) {
-    console.warn(`[relay-sync] Failed to ${method} ${path}:`, err);
-    return null;
+    console.warn("[relay-sync] Failed to sync whitelist:", err);
+    return [];
   }
 }
 
+/**
+ * Add a single pubkey — just re-syncs the entire list for simplicity.
+ */
 export async function addPubkeyToRelay(pubkey: string) {
   console.log(`[relay-sync] Adding pubkey to relay: ${pubkey.slice(0, 8)}...`);
-  return relayRequest("POST", "/whitelist", { pubkey });
+  return syncRelayWhitelist();
 }
 
+/**
+ * Remove a pubkey — re-syncs the entire list.
+ */
 export async function removePubkeyFromRelay(pubkey: string) {
   console.log(`[relay-sync] Removing pubkey from relay: ${pubkey.slice(0, 8)}...`);
-  return relayRequest("DELETE", "/whitelist", { pubkey });
-}
-
-export async function getRelayWhitelist(): Promise<string[]> {
-  const result = await relayRequest("GET", "/whitelist");
-  return result?.pubkeys || [];
-}
-
-export async function getRelayHealth() {
-  return relayRequest("GET", "/health");
+  return syncRelayWhitelist();
 }
