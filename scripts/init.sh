@@ -134,16 +134,22 @@ ADMIN_NSEC=$(echo "$KEYS_JSON" | node -e "process.stdout.write(JSON.parse(requir
 ADMIN_NPUB=$(echo "$KEYS_JSON" | node -e "process.stdout.write(JSON.parse(require('fs').readFileSync(0,'utf8')).npub)")
 ADMIN_PUBKEY=$(echo "$KEYS_JSON" | node -e "process.stdout.write(JSON.parse(require('fs').readFileSync(0,'utf8')).pubkey)")
 
+# ─── Show keys immediately ───
+echo ""
+echo -e "────────────────────────────────────────"
+echo -e "${BOLD}${CYAN}Admin Nostr Keys${NC}"
+echo -e "────────────────────────────────────────"
+echo -e "${BOLD}npub:${NC} $ADMIN_NPUB"
+echo -e "${BOLD}${RED}nsec:${NC} $ADMIN_NSEC"
+echo ""
+echo -e "${YELLOW}⚠️  SAVE THESE NOW — the nsec will not be stored anywhere after this.${NC}"
+echo -e "────────────────────────────────────────"
+echo ""
+read -p "Press Enter once you've saved the keys..." _WAIT
+
 # ─── Generate secrets ───
 SESSION_SECRET=$(node -e "console.log(require('crypto').randomBytes(32).toString('hex'))")
 BLOSSOM_PASS=$(node -e "console.log(require('crypto').randomBytes(16).toString('hex'))")
-
-# ─── Generate invite codes ───
-INVITE_CODES=()
-for i in {1..5}; do
-  CODE=$(node -e "console.log(require('crypto').randomBytes(4).toString('hex').toUpperCase())")
-  INVITE_CODES+=("$CODE")
-done
 
 # ─── Write .env ───
 cat > "$ENV_FILE" <<EOF
@@ -177,74 +183,6 @@ EOF
 
 echo -e "${GREEN}✓ .env written${NC}"
 
-# ─── Bootstrap database ───
-echo ""
-echo -e "${CYAN}Bootstrapping database...${NC}"
-
-cd "$PROJECT_DIR"
-
-# Run migrations
-npx prisma migrate deploy --schema=./prisma/schema.prisma 2>/dev/null
-
-# Create default team + admin member + invite codes
-node -e "
-const { PrismaClient } = require('@prisma/client');
-const prisma = new PrismaClient();
-
-async function bootstrap() {
-  // Check if already bootstrapped
-  const existing = await prisma.team.count();
-  if (existing > 0) {
-    console.log('Database already has teams — skipping bootstrap.');
-    return;
-  }
-
-  // Create default team
-  const team = await prisma.team.create({
-    data: {
-      name: '$COMMUNITY_NAME',
-      description: 'Default community team',
-      createdBy: '$ADMIN_PUBKEY',
-    },
-  });
-
-  // Create admin member
-  await prisma.member.create({
-    data: {
-      teamId: team.id,
-      pubkey: '$ADMIN_PUBKEY',
-      firstName: $(node -e "process.stdout.write(JSON.stringify('$ADMIN_FIRST_NAME'))"),
-      lastName: $(node -e "process.stdout.write(JSON.stringify('$ADMIN_LAST_NAME'))"),
-      email: $(node -e "process.stdout.write(JSON.stringify('$ADMIN_EMAIL'))"),
-      role: 'owner',
-    },
-  });
-
-  // Create invite codes
-  const codes = $(node -e "process.stdout.write(JSON.stringify([$(printf '"%s",' "${INVITE_CODES[@]}" | sed 's/,$//')]))");
-  const expiry = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000); // 30 days
-
-  for (const code of codes) {
-    await prisma.invite.create({
-      data: {
-        teamId: team.id,
-        code,
-        createdBy: '$ADMIN_PUBKEY',
-        expiresAt: expiry,
-      },
-    });
-  }
-
-  console.log('Database bootstrapped successfully.');
-}
-
-bootstrap()
-  .catch(e => { console.error(e); process.exit(1); })
-  .finally(() => prisma.\$disconnect());
-" 2>/dev/null
-
-echo -e "${GREEN}✓ Database bootstrapped${NC}"
-
 # ─── Output summary ───
 echo ""
 echo -e "────────────────────────────────────────"
@@ -265,12 +203,6 @@ echo -e "${BOLD}${RED}nsec:${NC}   $ADMIN_NSEC"
 echo ""
 echo -e "${YELLOW}⚠️  SAVE THE NSEC KEY ABOVE — IT WILL NOT BE SHOWN AGAIN${NC}"
 echo ""
-echo -e "${BOLD}${CYAN}Invite Codes${NC} (valid 30 days)"
-echo -e "────────────────────────────────────────"
-for CODE in "${INVITE_CODES[@]}"; do
-  echo -e "  ${GREEN}$CODE${NC}"
-done
-echo ""
 echo -e "${BOLD}${CYAN}Blossom Admin${NC}"
 echo -e "────────────────────────────────────────"
 echo -e "${BOLD}URL:${NC}      https://files.$DOMAIN/admin"
@@ -279,9 +211,8 @@ echo -e "${BOLD}Password:${NC} $BLOSSOM_PASS"
 echo ""
 echo -e "────────────────────────────────────────"
 echo -e "Next steps:"
-echo -e "  1. Save the admin credentials above"
-echo -e "  2. Run: ${BOLD}docker compose up -d${NC}"
-echo -e "  3. Visit: ${BOLD}https://$DOMAIN${NC}"
-echo -e "  4. Admin can log in with their nsec — no invite needed"
-echo -e "  5. Share invite codes with initial members"
+echo -e "  1. Run: ${BOLD}docker compose up -d${NC}"
+echo -e "  2. Visit: ${BOLD}https://$DOMAIN${NC}"
+echo -e "  3. Log in with the admin nsec — as the first user, you become the owner (no invite needed)"
+echo -e "  4. Go to Admin panel → Invites to create invite codes for members"
 echo ""
