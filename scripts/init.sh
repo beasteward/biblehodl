@@ -147,6 +147,10 @@ echo -e "───────────────────────�
 echo ""
 read -p "Press Enter once you've saved the keys..." _WAIT
 
+echo ""
+echo -e "${GREEN}✓ Keys saved. Continuing setup...${NC}"
+echo ""
+
 # ─── Generate secrets ───
 SESSION_SECRET=$(node -e "console.log(require('crypto').randomBytes(32).toString('hex'))")
 BLOSSOM_PASS=$(node -e "console.log(require('crypto').randomBytes(16).toString('hex'))")
