@@ -220,3 +220,5 @@ echo -e "  2. Visit: ${BOLD}https://$DOMAIN${NC}"
 echo -e "  3. Log in with the admin nsec — as the first user, you become the owner (no invite needed)"
 echo -e "  4. Go to Admin panel → Invites to create invite codes for members"
 echo ""
+echo ""
+read -p "Press Enter to exit..." _DONE
