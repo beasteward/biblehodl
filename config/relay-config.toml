@@ -1,0 +1,36 @@
+[info]
+# Relay name shown to clients
+relay_url = "wss://relay.DOMAIN_PLACEHOLDER"
+name = "Community Relay"
+description = "Private Nostr relay for the community"
+
+[database]
+# SQLite database path (persisted via Docker volume)
+data_directory = "/data"
+
+[network]
+# Listen on all interfaces inside the container
+address = "0.0.0.0"
+port = 8080
+
+[authorization]
+# Only whitelisted pubkeys can publish events
+pubkey_whitelist_enabled = true
+# Add hex pubkeys (not npub) here, one per line:
+# pubkey_whitelist = [
+#   "abc123...",
+# ]
+
+[limits]
+# Max events per second from a single connection
+messages_per_sec = 10
+# Max subscriptions per connection
+max_subs = 32
+# Max event size in bytes (128 KB — generous for DMs/calendar)
+max_event_bytes = 131072
+# Max filter limit per subscription
+max_limit = 1000
+
+[retention]
+# Keep events for 1 year (seconds). Set to 0 for unlimited.
+# max_seconds = 31536000

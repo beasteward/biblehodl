@@ -1,0 +1,115 @@
+# BibleHodl — Blossom Server Configuration
+# Built from https://github.com/hzrd149/blossom-server (official)
+#
+# Environment variables are substituted at startup using ${VAR_NAME} syntax.
+
+# ---------------------------------------------------------------------------
+# Network
+# ---------------------------------------------------------------------------
+port: 3000
+host: 0.0.0.0
+
+# Bare hostname — no https:// prefix. Set via BLOSSOM_DOMAIN env var.
+publicDomain: "${BLOSSOM_DOMAIN}"
+
+# ---------------------------------------------------------------------------
+# Database
+# ---------------------------------------------------------------------------
+database:
+  path: data/sqlite.db
+
+# ---------------------------------------------------------------------------
+# Storage
+# ---------------------------------------------------------------------------
+storage:
+  backend: local
+  local:
+    dir: ./data/blobs
+
+  removeWhenNoOwners: false
+
+  # Retention rules — first match wins.
+  # Community files: generous retention for images, moderate for video/other.
+  rules:
+    - type: "image/*"
+      expiration: 6 months
+    - type: "video/*"
+      expiration: 1 month
+    - type: "application/json"
+      expiration: 6 months    # Whiteboard snapshots
+    - type: "*"
+      expiration: 1 month
+
+# ---------------------------------------------------------------------------
+# Upload (BUD-02)
+# ---------------------------------------------------------------------------
+upload:
+  enabled: true
+  requireAuth: true           # Require Nostr signed auth (kind 24242)
+  maxSize: 104857600          # 100 MB — reasonable for community use
+  workers: 0                  # Auto (one per CPU core)
+  requirePubkeyInRule: false
+
+# ---------------------------------------------------------------------------
+# Mirror (BUD-04)
+# ---------------------------------------------------------------------------
+mirror:
+  enabled: false              # Disabled — not needed for community use
+
+# ---------------------------------------------------------------------------
+# Delete (BUD-02)
+# ---------------------------------------------------------------------------
+delete:
+  requireAuth: true
+
+# ---------------------------------------------------------------------------
+# List (BUD-02)
+# ---------------------------------------------------------------------------
+list:
+  enabled: true
+  requireAuth: true           # Only authenticated users can list
+  allowListOthers: false      # Users can only see their own blobs
+
+# ---------------------------------------------------------------------------
+# Media optimisation (BUD-05)
+# ---------------------------------------------------------------------------
+media:
+  enabled: true
+  requireAuth: true
+  maxSize: 104857600          # 100 MB
+
+  image:
+    quality: 85
+    progressive: true
+    maxWidth: 1920
+    maxHeight: 1080
+    outputFormat: webp
+    maintainAspectRatio: true
+    keepExif: false
+
+# ---------------------------------------------------------------------------
+# Prune loop
+# ---------------------------------------------------------------------------
+prune:
+  initialDelayMs: 60000
+  intervalMs: 30000
+
+# ---------------------------------------------------------------------------
+# Landing page
+# ---------------------------------------------------------------------------
+landing:
+  enabled: false              # Disabled — Caddy handles routing
+
+# ---------------------------------------------------------------------------
+# Reports (BUD-09)
+# ---------------------------------------------------------------------------
+report:
+  enabled: true
+
+# ---------------------------------------------------------------------------
+# Admin dashboard
+# ---------------------------------------------------------------------------
+dashboard:
+  enabled: true
+  username: "${BLOSSOM_ADMIN_USER}"
+  password: "${BLOSSOM_ADMIN_PASS}"

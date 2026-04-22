@@ -1,0 +1,3 @@
+[submodule "blossom-server"]
+	path = blossom-server
+	url = https://github.com/hzrd149/blossom-server.git

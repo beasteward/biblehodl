@@ -1,0 +1,15 @@
+{$DOMAIN} {
+	reverse_proxy app:3000
+}
+
+relay.{$DOMAIN} {
+	reverse_proxy relay:8080
+}
+
+files.{$DOMAIN} {
+	reverse_proxy blossom:3100
+}
+
+api.{$DOMAIN} {
+	reverse_proxy bible-api:4000
+}
