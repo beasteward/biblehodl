@@ -160,6 +160,10 @@ echo ""
 SESSION_SECRET=$(node -e "console.log(require('crypto').randomBytes(32).toString('hex'))")
 BLOSSOM_PASS=$(node -e "console.log(require('crypto').randomBytes(16).toString('hex'))")
 
+# ─── Create data directory ───
+mkdir -p "$PROJECT_DIR/data"
+chmod 777 "$PROJECT_DIR/data"
+
 # ─── Write .env ───
 cat > "$ENV_FILE" <<EOF
 # ─── BibleHodl Community Configuration ───
