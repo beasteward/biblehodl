@@ -27,11 +27,10 @@ COPY --from=build /app/.next/static ./.next/static
 # Copy public dir if it exists (optional)
 RUN mkdir -p ./public
 
-# Copy prisma for runtime migrations
+# Copy prisma for runtime migrations — need full node_modules for prisma CLI
 COPY --from=build /app/prisma ./prisma
-COPY --from=build /app/node_modules/.prisma ./node_modules/.prisma
-COPY --from=build /app/node_modules/@prisma ./node_modules/@prisma
-COPY --from=build /app/node_modules/prisma ./node_modules/prisma
+COPY --from=build /app/node_modules ./node_modules
+COPY --from=build /app/package.json ./package.json
 
 # Copy entrypoint
 COPY docker-entrypoint.sh ./

@@ -2,7 +2,7 @@
 set -e
 
 echo "Running database migrations..."
-node node_modules/prisma/build/index.js migrate deploy
+npx prisma migrate deploy --schema=./prisma/schema.prisma
 
 echo "Starting Next.js server..."
 exec node server.js
