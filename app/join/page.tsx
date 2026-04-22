@@ -125,7 +125,7 @@ export default function JoinPage() {
       }
 
       setIsRegistered(true);
-      setMemberProfile({ firstName, lastName, email });
+      setMemberProfile({ firstName, lastName, email, role: data.member.role });
       router.push("/");
     } catch {
       setRegError("Network error. Please try again.");

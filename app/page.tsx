@@ -60,6 +60,7 @@ export default function Home() {
             firstName: data.member.firstName,
             lastName: data.member.lastName,
             email: data.member.email,
+            role: data.member.role,
           });
         } else {
           router.push("/join");

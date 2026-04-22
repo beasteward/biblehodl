@@ -2,21 +2,24 @@
 
 import { useAppStore, type View } from "../../lib/store";
 
-const navItems: { view: View; icon: string; label: string }[] = [
+const navItems: { view: View; icon: string; label: string; adminOnly?: boolean }[] = [
   { view: "chat", icon: "💬", label: "Chat" },
   { view: "calendar", icon: "📅", label: "Calendar" },
   { view: "meetings", icon: "👥", label: "Meetings" },
   { view: "files", icon: "📁", label: "Files" },
   { view: "games", icon: "🎮", label: "Games" },
   { view: "team", icon: "⚙️", label: "Team" },
-  { view: "admin", icon: "🛡️", label: "Admin" },
+  { view: "admin", icon: "🛡️", label: "Admin", adminOnly: true },
 ];
 
 export default function ActivityBar() {
   const currentView = useAppStore((s) => s.currentView);
   const setCurrentView = useAppStore((s) => s.setCurrentView);
   const keys = useAppStore((s) => s.keys);
+  const memberProfile = useAppStore((s) => s.memberProfile);
   const connectedRelays = useAppStore((s) => s.connectedRelays);
+  const isAdmin = memberProfile?.role === "owner" || memberProfile?.role === "admin";
+  const visibleItems = navItems.filter((item) => !item.adminOnly || isAdmin);
 
   return (
     <div
@@ -28,7 +31,7 @@ export default function ActivityBar() {
         ⚡
       </div>
 
-      {navItems.map((item) => (
+      {visibleItems.map((item) => (
         <button
           key={item.view}
           onClick={() => setCurrentView(item.view)}
