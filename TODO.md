@@ -13,7 +13,7 @@
 ## Low Priority
 - [ ] Init script: add `--non-interactive` flag for automated deployments (accept args instead of prompts)
 - [ ] README: add troubleshooting section (common issues like data/ dir, ESM errors)
-- [ ] Remove "Generate New Keys" from LoginScreen (only on /join — login should be for existing users)
+
 
 ## Done
 - [x] Add save-your-keys step to /join registration flow (2026-04-22)
