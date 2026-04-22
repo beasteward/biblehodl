@@ -10,6 +10,7 @@ files.{$DOMAIN} {
 	reverse_proxy blossom:3100
 }
 
-api.{$DOMAIN} {
-	reverse_proxy bible-api:4000
-}
+# Uncomment when running local CPDV Bible API:
+# api.{$DOMAIN} {
+# 	reverse_proxy bible-api:4000
+# }
