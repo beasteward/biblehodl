@@ -1,18 +1,30 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { useAppStore } from "../lib/store";
 import { generateKeys, keysFromNsec } from "../lib/nostr";
+import { hasNip07Extension, getNip07PublicKey, createNip07Signer, createLocalSigner } from "../lib/signer";
+import { nip19 } from "nostr-tools";
 
 export default function JoinPage() {
   const router = useRouter();
   const keys = useAppStore((s) => s.keys);
   const setKeys = useAppStore((s) => s.setKeys);
+  const setSigner = useAppStore((s) => s.setSigner);
+  const setSignerMode = useAppStore((s) => s.setSignerMode);
   const setIsRegistered = useAppStore((s) => s.setIsRegistered);
   const setMemberProfile = useAppStore((s) => s.setMemberProfile);
 
   const [step, setStep] = useState<"keys" | "save" | "register">(keys ? "register" : "keys");
+  const [hasExtension, setHasExtension] = useState(false);
+
+  useEffect(() => {
+    const check = () => setHasExtension(hasNip07Extension());
+    check();
+    const timer = setTimeout(check, 500);
+    return () => clearTimeout(timer);
+  }, []);
   const [savedConfirmed, setSavedConfirmed] = useState(false);
   const [copied, setCopied] = useState<"nsec" | "npub" | null>(null);
   const [nsecInput, setNsecInput] = useState("");
@@ -26,11 +38,34 @@ export default function JoinPage() {
   const [regError, setRegError] = useState("");
   const [submitting, setSubmitting] = useState(false);
 
+  const handleNip07 = async () => {
+    try {
+      setKeyError("");
+      const pubkey = await getNip07PublicKey();
+      const npub = nip19.npubEncode(pubkey);
+      const signer = createNip07Signer(pubkey);
+      setKeys({
+        privateKey: new Uint8Array(0),
+        publicKey: pubkey,
+        npub,
+        nsec: "",
+      });
+      setSigner(signer);
+      setSignerMode("nip07");
+      setStep("register");
+    } catch (err) {
+      setKeyError(err instanceof Error ? err.message : "Failed to connect to extension");
+    }
+  };
+
   const handleKeyLogin = () => {
     try {
       setKeyError("");
       const k = keysFromNsec(nsecInput.trim());
+      const signer = createLocalSigner(k.privateKey);
       setKeys(k);
+      setSigner(signer);
+      setSignerMode("local");
       setStep("register");
     } catch {
       setKeyError("Invalid nsec key. Please check and try again.");
@@ -39,7 +74,10 @@ export default function JoinPage() {
 
   const handleKeyGenerate = () => {
     const k = generateKeys();
+    const signer = createLocalSigner(k.privateKey);
     setKeys(k);
+    setSigner(signer);
+    setSignerMode("local");
     setStep("save");
   };
 
@@ -119,6 +157,25 @@ export default function JoinPage() {
           // Step 1: Key entry
           keyMode === "login" ? (
             <>
+              {hasExtension && (
+                <>
+                  <button
+                    onClick={handleNip07}
+                    className="w-full py-3 rounded-lg font-medium text-sm transition-colors cursor-pointer"
+                    style={{ background: "var(--accent)", color: "white" }}
+                  >
+                    🔑 Continue with Nostr Extension
+                  </button>
+                  <p className="mt-2 text-center text-xs" style={{ color: "var(--text-muted)" }}>
+                    Recommended — your keys never leave the extension
+                  </p>
+                  <div className="my-5 flex items-center gap-3">
+                    <div className="flex-1 h-px" style={{ background: "var(--border)" }} />
+                    <span className="text-xs" style={{ color: "var(--text-muted)" }}>or</span>
+                    <div className="flex-1 h-px" style={{ background: "var(--border)" }} />
+                  </div>
+                </>
+              )}
               <div className="mb-4">
                 <label className="block text-sm mb-2" style={{ color: "var(--text-secondary)" }}>
                   Enter your nsec key

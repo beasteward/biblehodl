@@ -1,6 +1,7 @@
 import { create } from "zustand";
 import { persist } from "zustand/middleware";
 import type { NostrKeys } from "./nostr";
+import type { Signer, SignerMode } from "./signer";
 
 export type View = "chat" | "calendar" | "meetings" | "files" | "games" | "team" | "admin";
 
@@ -64,6 +65,10 @@ interface AppState {
   // Auth
   keys: NostrKeys | null;
   setKeys: (keys: NostrKeys | null) => void;
+  signer: Signer | null;
+  setSigner: (signer: Signer | null) => void;
+  signerMode: SignerMode | null;
+  setSignerMode: (mode: SignerMode | null) => void;
   isRegistered: boolean;
   setIsRegistered: (val: boolean) => void;
   memberProfile: MemberProfile | null;
@@ -110,6 +115,10 @@ export const useAppStore = create<AppState>()(
       // Auth
       keys: null,
       setKeys: (keys) => set({ keys }),
+      signer: null,
+      setSigner: (signer) => set({ signer }),
+      signerMode: null,
+      setSignerMode: (signerMode) => set({ signerMode }),
       isRegistered: false,
       setIsRegistered: (isRegistered) => set({ isRegistered }),
       memberProfile: null,
@@ -189,6 +198,7 @@ export const useAppStore = create<AppState>()(
       partialize: (state) => ({
         // Only persist keys and view preference
         keys: state.keys,
+        signerMode: state.signerMode,
         currentView: state.currentView,
         channels: state.channels,
         isRegistered: state.isRegistered,

@@ -3,16 +3,47 @@
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useAppStore } from "./lib/store";
+import { createLocalSigner, createNip07Signer, hasNip07Extension, getNip07PublicKey } from "./lib/signer";
 import LoginScreen from "./components/auth/LoginScreen";
 import AppShell from "./components/layout/AppShell";
 
 export default function Home() {
   const router = useRouter();
   const keys = useAppStore((s) => s.keys);
+  const signer = useAppStore((s) => s.signer);
+  const setSigner = useAppStore((s) => s.setSigner);
+  const signerMode = useAppStore((s) => s.signerMode);
+  const setKeys = useAppStore((s) => s.setKeys);
+  const setSignerMode = useAppStore((s) => s.setSignerMode);
   const isRegistered = useAppStore((s) => s.isRegistered);
   const setIsRegistered = useAppStore((s) => s.setIsRegistered);
   const setMemberProfile = useAppStore((s) => s.setMemberProfile);
   const [checking, setChecking] = useState(false);
+
+  // Restore signer on reload from persisted signerMode
+  useEffect(() => {
+    if (signer || !keys || !signerMode) return;
+
+    if (signerMode === "nip07") {
+      if (hasNip07Extension()) {
+        getNip07PublicKey()
+          .then((pubkey) => setSigner(createNip07Signer(pubkey)))
+          .catch(() => {
+            // Extension gone — clear auth state
+            setKeys(null);
+            setSignerMode(null);
+            setIsRegistered(false);
+          });
+      } else {
+        // Extension not available — clear auth
+        setKeys(null);
+        setSignerMode(null);
+        setIsRegistered(false);
+      }
+    } else if (signerMode === "local" && keys.privateKey?.length > 0) {
+      setSigner(createLocalSigner(keys.privateKey));
+    }
+  }, [signer, keys, signerMode, setSigner, setKeys, setSignerMode, setIsRegistered]);
 
   useEffect(() => {
     if (!keys || isRegistered) return;
