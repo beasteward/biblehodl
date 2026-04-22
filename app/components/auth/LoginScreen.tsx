@@ -126,7 +126,7 @@ export default function LoginScreen() {
               <div className="mt-6 p-3 rounded-lg" style={{ background: "var(--bg-tertiary)" }}>
                 <p className="text-xs" style={{ color: "var(--text-muted)" }}>
                   💡 <strong>Tip:</strong> Install a Nostr signer extension (
-                  <a href="https://github.com/nicejkweb/nos2x" target="_blank" rel="noopener noreferrer" style={{ color: "var(--accent-light)" }}>nos2x</a>,{" "}
+                  <a href="https://github.com/fiatjaf/nos2x" target="_blank" rel="noopener noreferrer" style={{ color: "var(--accent-light)" }}>nos2x</a>,{" "}
                   <a href="https://getalby.com" target="_blank" rel="noopener noreferrer" style={{ color: "var(--accent-light)" }}>Alby</a>
                   ) for safer key management. Your private key never leaves the extension.
                 </p>
