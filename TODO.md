@@ -6,6 +6,7 @@
 - [ ] Phase 3: Full feature test pass (Chat, DMs, Calendar, Files, Games, Meetings)
 
 ## Medium Priority
+- [ ] Implement NIP-42 relay auth to replace pubkey whitelist (whitelist breaks NIP-17 DMs)
 - [ ] NIP-07 `nip44` support for encrypted DMs (currently DMs use raw privateKey for NIP-44 encryption)
 - [ ] Handle stale localStorage keys on /join — if keys exist but user isn't registered, clear state instead of skipping to registration form
 - [ ] Add logout/disconnect button to AppShell (clear keys + signer + registration state)
