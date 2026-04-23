@@ -45,10 +45,14 @@ export default function Home() {
     }
   }, [signer, keys, signerMode, setSigner, setKeys, setSignerMode, setIsRegistered]);
 
+  // Always check registration on mount to refresh profile (role, etc.)
+  const [checkedThisSession, setCheckedThisSession] = useState(false);
+
   useEffect(() => {
-    if (!keys || isRegistered) return;
+    if (!keys || checkedThisSession) return;
 
     setChecking(true);
+    setCheckedThisSession(true);
     fetch("/api/auth/check", {
       headers: { "x-pubkey": keys.publicKey },
     })
@@ -71,7 +75,7 @@ export default function Home() {
         setIsRegistered(true);
       })
       .finally(() => setChecking(false));
-  }, [keys, isRegistered, router, setIsRegistered, setMemberProfile]);
+  }, [keys, checkedThisSession, router, setIsRegistered, setMemberProfile]);
 
   if (!keys) return <LoginScreen />;
 
