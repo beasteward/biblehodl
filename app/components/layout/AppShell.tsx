@@ -31,16 +31,20 @@ export default function AppShell() {
   const keys = useAppStore((s) => s.keys);
   const ActiveView = views[currentView];
 
+  const signer = useAppStore((s) => s.signer);
+
   useEffect(() => {
     initChat().then(() => {
-      if (keys?.privateKey) {
-        subscribeToDMs(keys.privateKey);
+      if (keys?.publicKey) {
+        // Pass privateKey for local signer, empty array for NIP-07
+        const pk = keys.privateKey?.length > 0 ? keys.privateKey : new Uint8Array(0);
+        subscribeToDMs(pk);
         subscribeToCalendarEvents([keys.publicKey]);
         initMeetings();
       }
     });
     return () => teardownChat();
-  }, [keys]);
+  }, [keys, signer]);
 
   return (
     <div className="flex h-screen w-screen overflow-hidden">
