@@ -108,6 +108,10 @@ interface AppState {
   profiles: Record<string, Profile>;
   setProfile: (pubkey: string, profile: Profile) => void;
 
+  // Channel membership
+  myChannelIds: Set<string>;
+  setMyChannelIds: (ids: Set<string>) => void;
+
   // Connection
   connectedRelays: string[];
   setConnectedRelays: (relays: string[]) => void;
@@ -211,6 +215,10 @@ export const useAppStore = create<AppState>()(
         set((state) => ({
           profiles: { ...state.profiles, [pubkey]: profile },
         })),
+
+      // Channel membership
+      myChannelIds: new Set<string>(),
+      setMyChannelIds: (myChannelIds) => set({ myChannelIds }),
 
       // Connection
       connectedRelays: [],

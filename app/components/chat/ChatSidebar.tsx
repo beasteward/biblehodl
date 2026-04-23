@@ -41,6 +41,9 @@ export default function ChatSidebar() {
     try {
       const id = await createChannel(newName.trim(), newAbout.trim(), keys.privateKey);
       addChannel({ id, name: newName.trim(), about: newAbout.trim() });
+      // Update membership set
+      const store = useAppStore.getState();
+      store.setMyChannelIds(new Set([...store.myChannelIds, id]));
       setActiveChannelId(id);
       setNewName("");
       setNewAbout("");
@@ -83,7 +86,10 @@ export default function ChatSidebar() {
         return bTime - aTime;
       });
   }, [channels]);
-  const groupChannels = channels.filter((c) => !c.isDirectMessage);
+  const myChannelIds = useAppStore((s) => s.myChannelIds);
+  const groupChannels = channels.filter(
+    (c) => !c.isDirectMessage && (myChannelIds.size === 0 || myChannelIds.has(c.id))
+  );
 
   const filterMatch = (name: string) =>
     !search || name.toLowerCase().includes(search.toLowerCase());

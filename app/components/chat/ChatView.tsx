@@ -9,6 +9,7 @@ import {
   fetchProfile,
 } from "../../lib/chat-service";
 import { sendDirectMessage } from "../../lib/dm-service";
+import ChannelMembersPanel from "./ChannelMembersPanel";
 
 export default function ChatView() {
   const activeChannelId = useAppStore((s) => s.activeChannelId);
@@ -18,6 +19,7 @@ export default function ChatView() {
   const keys = useAppStore((s) => s.keys);
   const [input, setInput] = useState("");
   const [sending, setSending] = useState(false);
+  const [showMembers, setShowMembers] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
   const clearUnread = useAppStore((s) => s.clearUnread);
@@ -101,6 +103,7 @@ export default function ChatView() {
   }
 
   return (
+    <div className="flex-1 flex h-full">
     <div className="flex-1 flex flex-col h-full">
       {/* Header */}
       <div
@@ -137,8 +140,23 @@ export default function ChatView() {
             </>
           )}
         </div>
-        <div className="text-xs" style={{ color: "var(--text-muted)" }}>
-          {channelMessages.length} messages
+        <div className="flex items-center gap-3">
+          <div className="text-xs" style={{ color: "var(--text-muted)" }}>
+            {channelMessages.length} messages
+          </div>
+          {!isDM && (
+            <button
+              onClick={() => setShowMembers(!showMembers)}
+              className="text-sm cursor-pointer px-2 py-1 rounded"
+              style={{
+                background: showMembers ? "var(--accent)" : "var(--bg-tertiary)",
+                color: showMembers ? "white" : "var(--text-secondary)",
+              }}
+              title="Members"
+            >
+              👥
+            </button>
+          )}
         </div>
       </div>
 
@@ -241,6 +259,13 @@ export default function ChatView() {
           </div>
         )}
       </div>
+    </div>
+    {showMembers && activeChannelId && !isDM && (
+      <ChannelMembersPanel
+        channelId={activeChannelId}
+        onClose={() => setShowMembers(false)}
+      />
+    )}
     </div>
   );
 }

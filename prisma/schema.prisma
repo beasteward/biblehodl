@@ -52,6 +52,20 @@ model Invite {
   @@index([code])
 }
 
+// ─── Channels ───
+
+model ChannelMember {
+  id        String   @id @default(cuid())
+  channelId String   // Nostr event ID of the kind-40 channel
+  pubkey    String
+  role      String   @default("member") // owner | admin | member
+  joinedAt  DateTime @default(now())
+
+  @@unique([channelId, pubkey])
+  @@index([channelId])
+  @@index([pubkey])
+}
+
 // ─── Games ───
 
 model Game {

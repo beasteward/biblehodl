@@ -20,6 +20,23 @@ export async function createChannel(
   const content = JSON.stringify({ name, about, picture: "" });
   const event = createEvent(KIND_CHANNEL_CREATE, content, [], privateKey);
   await pool.publish(event);
+
+  // Auto-add creator as channel owner in DB
+  const store = useAppStore.getState();
+  const pubkey = store.keys?.publicKey || event.pubkey;
+  try {
+    await fetch(`/api/channels/${event.id}/members`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "x-pubkey": pubkey,
+      },
+      body: JSON.stringify({ pubkey, role: "owner" }),
+    });
+  } catch {
+    // non-critical — owner can be added later
+  }
+
   return event.id;
 }
 
@@ -166,8 +183,23 @@ export function fetchProfile(pubkey: string) {
 
 export async function initChat() {
   const relays = await pool.connectAll();
-  useAppStore.getState().setConnectedRelays(relays.map((r) => r.url));
+  const store = useAppStore.getState();
+  store.setConnectedRelays(relays.map((r) => r.url));
   subscribeToChannels();
+
+  // Load user's channel memberships
+  if (store.keys) {
+    try {
+      const res = await fetch("/api/channels/my", {
+        headers: { "x-pubkey": store.keys.publicKey },
+      });
+      const data = await res.json();
+      const ids = new Set<string>((data.channels || []).map((c: { id: string }) => c.id));
+      store.setMyChannelIds(ids);
+    } catch {
+      // non-critical
+    }
+  }
 }
 
 export function teardownChat() {
