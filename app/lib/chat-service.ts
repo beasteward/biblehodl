@@ -133,10 +133,31 @@ export function fetchProfile(pubkey: string) {
       pool.unsubscribe(`profile-${pubkey}`);
       profileFetchQueue.delete(pubkey);
     },
-    () => {
-      // EOSE without result
+    async () => {
+      // EOSE without result from relay — fall back to member DB
       pool.unsubscribe(`profile-${pubkey}`);
       profileFetchQueue.delete(pubkey);
+
+      if (!store.profiles[pubkey]) {
+        try {
+          const keys = store.keys;
+          if (!keys) return;
+          const res = await fetch(`/api/members/search?q=${pubkey}`, {
+            headers: { "x-pubkey": keys.publicKey },
+          });
+          const data = await res.json();
+          const member = data.members?.[0];
+          if (member) {
+            store.setProfile(pubkey, {
+              pubkey,
+              name: `${member.firstName} ${member.lastName}`,
+              displayName: `${member.firstName} ${member.lastName}`,
+            });
+          }
+        } catch {
+          // ignore fallback failure
+        }
+      }
     }
   );
 }

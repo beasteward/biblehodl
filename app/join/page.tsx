@@ -3,9 +3,10 @@
 import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { useAppStore } from "../lib/store";
-import { generateKeys, keysFromNsec } from "../lib/nostr";
-import { hasNip07Extension, getNip07PublicKey, createNip07Signer, createLocalSigner } from "../lib/signer";
+import { generateKeys, keysFromNsec, createEvent, KIND_METADATA } from "../lib/nostr";
+import { hasNip07Extension, getNip07PublicKey, createNip07Signer, createLocalSigner, createSignedEvent } from "../lib/signer";
 import { nip19 } from "nostr-tools";
+import { pool } from "../lib/relay-pool";
 
 export default function JoinPage() {
   const router = useRouter();
@@ -126,6 +127,26 @@ export default function JoinPage() {
 
       setIsRegistered(true);
       setMemberProfile({ firstName, lastName, email, role: data.member.role });
+
+      // Publish kind-0 profile to relay so other users can find us
+      try {
+        const signer = useAppStore.getState().signer;
+        const profileContent = JSON.stringify({
+          name: `${firstName} ${lastName}`,
+          display_name: `${firstName} ${lastName}`,
+        });
+        if (signer) {
+          const event = await createSignedEvent(signer, KIND_METADATA, profileContent, []);
+          await pool.publish(event);
+        } else if (keys.privateKey?.length > 0) {
+          const event = createEvent(KIND_METADATA, profileContent, [], keys.privateKey);
+          await pool.publish(event);
+        }
+      } catch (e) {
+        console.warn("[register] Failed to publish profile:", e);
+        // Non-fatal — registration still succeeded
+      }
+
       router.push("/");
     } catch {
       setRegError("Network error. Please try again.");
