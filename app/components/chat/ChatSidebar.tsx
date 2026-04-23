@@ -4,6 +4,7 @@ import { useState } from "react";
 import { useAppStore } from "../../lib/store";
 import { createChannel } from "../../lib/chat-service";
 import { startDMConversation } from "../../lib/dm-service";
+import MemberSearch, { type MemberResult } from "../common/MemberSearch";
 
 export default function ChatSidebar() {
   const channels = useAppStore((s) => s.channels);
@@ -35,10 +36,15 @@ export default function ChatSidebar() {
     setCreating(false);
   };
 
-  const handleStartDM = () => {
+  const handleStartDM = (member: MemberResult) => {
+    if (!keys) return;
+    startDMConversation(member.pubkey, keys.publicKey);
+    setShowNew(false);
+  };
+
+  const handleStartDMByPubkey = () => {
     if (!dmPubkey.trim() || !keys) return;
     let pubkey = dmPubkey.trim();
-    // Handle npub format
     if (pubkey.startsWith("npub1")) {
       try {
         const { nip19 } = require("nostr-tools");
@@ -152,18 +158,27 @@ export default function ChatSidebar() {
             </>
           ) : (
             <>
+              <MemberSearch
+                onSelect={handleStartDM}
+                placeholder="Search members by name..."
+                excludePubkeys={keys ? [keys.publicKey] : []}
+              />
+              <div className="flex items-center gap-2 mt-2">
+                <div className="flex-1 h-px" style={{ background: "var(--border)" }} />
+                <span className="text-xs" style={{ color: "var(--text-muted)" }}>or</span>
+                <div className="flex-1 h-px" style={{ background: "var(--border)" }} />
+              </div>
               <input
                 type="text"
                 placeholder="npub or hex pubkey..."
                 value={dmPubkey}
                 onChange={(e) => setDmPubkey(e.target.value)}
-                onKeyDown={(e) => e.key === "Enter" && handleStartDM()}
+                onKeyDown={(e) => e.key === "Enter" && handleStartDMByPubkey()}
                 className="w-full px-3 py-2 rounded text-sm outline-none"
                 style={{ background: "var(--bg-tertiary)", border: "1px solid var(--border)", color: "var(--text-primary)" }}
-                autoFocus
               />
               <button
-                onClick={handleStartDM}
+                onClick={handleStartDMByPubkey}
                 disabled={!dmPubkey.trim()}
                 className="w-full py-2 rounded text-sm cursor-pointer disabled:opacity-50"
                 style={{ background: "var(--accent)", color: "white" }}
