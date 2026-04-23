@@ -14,12 +14,10 @@ address = "0.0.0.0"
 port = 8080
 
 [authorization]
-# Only whitelisted pubkeys can publish events
-pubkey_whitelist_enabled = true
-# Add hex pubkeys (not npub) here, one per line:
-# pubkey_whitelist = [
-#   "abc123...",
-# ]
+# Pubkey whitelisting disabled for now — breaks NIP-17 DMs
+# (gift wrap events use random throwaway pubkeys that won't be whitelisted).
+# TODO: Implement NIP-42 auth for proper access control.
+pubkey_whitelist_enabled = false
 
 [limits]
 # Max events per second from a single connection
