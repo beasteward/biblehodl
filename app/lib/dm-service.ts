@@ -198,7 +198,17 @@ function handleIncomingDM(
     created_at,
     channelId: conversationId,
   };
+
+  // Check for dedup before incrementing unread
+  const existingMsgs = store.messages[conversationId] || [];
+  const isDuplicate = existingMsgs.some((m) => m.id === eventId);
+
   store.addMessage(conversationId, msg);
+
+  // Increment unread if this is a new message from someone else and not the active channel
+  if (!isDuplicate && senderPubkey !== myPubkey && store.activeChannelId !== conversationId) {
+    store.incrementUnread(conversationId);
+  }
 
   if (!store.profiles[senderPubkey]) {
     fetchProfile(senderPubkey);

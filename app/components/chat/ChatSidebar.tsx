@@ -1,10 +1,25 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useMemo } from "react";
 import { useAppStore } from "../../lib/store";
 import { createChannel } from "../../lib/chat-service";
 import { startDMConversation } from "../../lib/dm-service";
 import MemberSearch, { type MemberResult } from "../common/MemberSearch";
+
+function formatRelativeTime(unixSeconds: number): string {
+  const now = Math.floor(Date.now() / 1000);
+  const diff = now - unixSeconds;
+  if (diff < 60) return "now";
+  if (diff < 3600) return `${Math.floor(diff / 60)}m`;
+  if (diff < 86400) return `${Math.floor(diff / 3600)}h`;
+  if (diff < 604800) return `${Math.floor(diff / 86400)}d`;
+  return new Date(unixSeconds * 1000).toLocaleDateString([], { month: "short", day: "numeric" });
+}
+
+function truncate(text: string, maxLen: number): string {
+  if (text.length <= maxLen) return text;
+  return text.slice(0, maxLen).trimEnd() + "…";
+}
 
 export default function ChatSidebar() {
   const channels = useAppStore((s) => s.channels);
@@ -59,7 +74,15 @@ export default function ChatSidebar() {
     setShowNew(false);
   };
 
-  const dmChannels = channels.filter((c) => c.isDirectMessage);
+  const dmChannels = useMemo(() => {
+    return channels
+      .filter((c) => c.isDirectMessage)
+      .sort((a, b) => {
+        const aTime = a.lastMessage?.created_at || 0;
+        const bTime = b.lastMessage?.created_at || 0;
+        return bTime - aTime;
+      });
+  }, [channels]);
   const groupChannels = channels.filter((c) => !c.isDirectMessage);
 
   const filterMatch = (name: string) =>
@@ -198,30 +221,70 @@ export default function ChatSidebar() {
             <div className="px-4 py-2 text-xs font-semibold uppercase tracking-wider" style={{ color: "var(--text-muted)" }}>
               Direct Messages
             </div>
-            {dmChannels.filter((c) => filterMatch(getDMName(c))).map((channel) => (
-              <button
-                key={channel.id}
-                onClick={() => setActiveChannelId(channel.id)}
-                className="w-full px-4 py-2.5 flex items-center gap-3 text-left transition-colors cursor-pointer"
-                style={{
-                  background: activeChannelId === channel.id ? "var(--bg-active)" : "transparent",
-                  borderLeft: activeChannelId === channel.id ? "3px solid var(--accent-light)" : "3px solid transparent",
-                }}
-              >
-                {getDMAvatar(channel) ? (
-                  <img src={getDMAvatar(channel)!} alt="" className="w-8 h-8 rounded-full object-cover shrink-0" />
-                ) : (
-                  <div className="w-8 h-8 rounded-full flex items-center justify-center text-xs shrink-0" style={{ background: "var(--accent)" }}>
-                    👤
+            {dmChannels.filter((c) => filterMatch(getDMName(c))).map((channel) => {
+              const unread = channel.unreadCount || 0;
+              const lastMsg = channel.lastMessage;
+              const isActive = activeChannelId === channel.id;
+              return (
+                <button
+                  key={channel.id}
+                  onClick={() => setActiveChannelId(channel.id)}
+                  className="w-full px-4 py-2.5 flex items-center gap-3 text-left transition-colors cursor-pointer"
+                  style={{
+                    background: isActive ? "var(--bg-active)" : "transparent",
+                    borderLeft: isActive ? "3px solid var(--accent-light)" : "3px solid transparent",
+                  }}
+                >
+                  <div className="relative shrink-0">
+                    {getDMAvatar(channel) ? (
+                      <img src={getDMAvatar(channel)!} alt="" className="w-10 h-10 rounded-full object-cover" />
+                    ) : (
+                      <div className="w-10 h-10 rounded-full flex items-center justify-center text-xs" style={{ background: "var(--accent)" }}>
+                        👤
+                      </div>
+                    )}
+                    {unread > 0 && (
+                      <span
+                        className="absolute -top-1 -right-1 min-w-[18px] h-[18px] flex items-center justify-center rounded-full text-[10px] font-bold px-1"
+                        style={{ background: "var(--accent-light)", color: "white" }}
+                      >
+                        {unread > 99 ? "99+" : unread}
+                      </span>
+                    )}
                   </div>
-                )}
-                <div className="min-w-0">
-                  <div className="text-sm font-medium truncate" style={{ color: "var(--text-primary)" }}>
-                    {getDMName(channel)}
+                  <div className="min-w-0 flex-1">
+                    <div className="flex items-center justify-between gap-2">
+                      <span
+                        className="text-sm truncate"
+                        style={{
+                          color: "var(--text-primary)",
+                          fontWeight: unread > 0 ? 700 : 500,
+                        }}
+                      >
+                        {getDMName(channel)}
+                      </span>
+                      {lastMsg && (
+                        <span className="text-[11px] shrink-0" style={{ color: "var(--text-muted)" }}>
+                          {formatRelativeTime(lastMsg.created_at)}
+                        </span>
+                      )}
+                    </div>
+                    {lastMsg && (
+                      <div
+                        className="text-xs truncate mt-0.5"
+                        style={{
+                          color: unread > 0 ? "var(--text-secondary)" : "var(--text-muted)",
+                          fontWeight: unread > 0 ? 600 : 400,
+                        }}
+                      >
+                        {lastMsg.pubkey === keys?.publicKey ? "You: " : ""}
+                        {truncate(lastMsg.content, 50)}
+                      </div>
+                    )}
                   </div>
-                </div>
-              </button>
-            ))}
+                </button>
+              );
+            })}
           </>
         )}
 

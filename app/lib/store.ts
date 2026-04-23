@@ -28,6 +28,7 @@ export interface Channel {
   isDirectMessage?: boolean;
   participants?: string[];
   lastMessage?: ChatMessage;
+  unreadCount?: number;
 }
 
 export interface CalendarEvent {
@@ -87,6 +88,8 @@ interface AppState {
   setActiveChannelId: (id: string | null) => void;
   messages: Record<string, ChatMessage[]>;
   addMessage: (channelId: string, message: ChatMessage) => void;
+  clearUnread: (channelId: string) => void;
+  incrementUnread: (channelId: string) => void;
 
   // Calendar
   calendarEvents: CalendarEvent[];
@@ -145,15 +148,34 @@ export const useAppStore = create<AppState>()(
         set((state) => {
           const existing = state.messages[channelId] || [];
           if (existing.some((m) => m.id === message.id)) return state;
+          const sorted = [...existing, message].sort(
+            (a, b) => a.created_at - b.created_at
+          );
+          const lastMsg = sorted[sorted.length - 1];
           return {
             messages: {
               ...state.messages,
-              [channelId]: [...existing, message].sort(
-                (a, b) => a.created_at - b.created_at
-              ),
+              [channelId]: sorted,
             },
+            channels: state.channels.map((c) =>
+              c.id === channelId ? { ...c, lastMessage: lastMsg } : c
+            ),
           };
         }),
+      clearUnread: (channelId) =>
+        set((state) => ({
+          channels: state.channels.map((c) =>
+            c.id === channelId ? { ...c, unreadCount: 0 } : c
+          ),
+        })),
+      incrementUnread: (channelId) =>
+        set((state) => ({
+          channels: state.channels.map((c) =>
+            c.id === channelId
+              ? { ...c, unreadCount: (c.unreadCount || 0) + 1 }
+              : c
+          ),
+        })),
 
       // Calendar
       calendarEvents: [],

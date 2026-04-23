@@ -20,9 +20,17 @@ export default function ChatView() {
   const [sending, setSending] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
+  const clearUnread = useAppStore((s) => s.clearUnread);
   const activeChannel = channels.find((c) => c.id === activeChannelId);
   const isDM = activeChannel?.isDirectMessage ?? false;
   const channelMessages = activeChannelId ? messages[activeChannelId] || [] : [];
+
+  // Clear unread when switching to a channel
+  useEffect(() => {
+    if (activeChannelId) {
+      clearUnread(activeChannelId);
+    }
+  }, [activeChannelId, clearUnread]);
 
   // Subscribe to channel messages (not DMs — those are handled globally)
   useEffect(() => {
@@ -229,7 +237,7 @@ export default function ChatView() {
         </div>
         {isDM && (
           <div className="text-xs mt-1 text-center" style={{ color: "var(--text-muted)" }}>
-            🔒 Messages are end-to-end encrypted (NIP-17)
+            🔒 Messages are end-to-end encrypted (NIP-04)
           </div>
         )}
       </div>
