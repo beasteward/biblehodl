@@ -6,7 +6,7 @@ import { getPubkeyFromRequest } from "../../../lib/auth";
 import { addPubkeyToRelay } from "../../../lib/relay-sync";
 
 export async function POST(request: NextRequest) {
-  const pubkey = getPubkeyFromRequest(request);
+  const pubkey = await getPubkeyFromRequest(request);
   if (!pubkey) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }

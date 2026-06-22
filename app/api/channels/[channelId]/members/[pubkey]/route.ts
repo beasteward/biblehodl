@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { PrismaClient } from "@prisma/client";
+import { getPubkeyFromRequest } from "../../../../../lib/auth";
 
 const prisma = new PrismaClient();
 
@@ -9,9 +10,9 @@ export async function DELETE(
   { params }: { params: Promise<{ channelId: string; pubkey: string }> }
 ) {
   const { channelId, pubkey } = await params;
-  const requesterPubkey = req.headers.get("x-pubkey");
+  const requesterPubkey = await getPubkeyFromRequest(req);
   if (!requesterPubkey) {
-    return NextResponse.json({ error: "Missing x-pubkey header" }, { status: 401 });
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
   // Self-leave is always allowed

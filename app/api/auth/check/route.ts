@@ -3,7 +3,7 @@ import { prisma } from "../../../lib/prisma";
 import { getPubkeyFromRequest } from "../../../lib/auth";
 
 export async function GET(request: Request) {
-  const pubkey = getPubkeyFromRequest(request);
+  const pubkey = await getPubkeyFromRequest(request);
   if (!pubkey) {
     return NextResponse.json({ error: "Missing pubkey" }, { status: 401 });
   }

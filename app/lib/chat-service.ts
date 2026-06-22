@@ -2,35 +2,32 @@
 
 import { pool } from "./relay-pool";
 import {
-  createEvent,
   KIND_CHANNEL_CREATE,
   KIND_CHANNEL_MESSAGE,
   KIND_METADATA,
 } from "./nostr";
 import { useAppStore } from "./store";
 import type { Channel, ChatMessage, Profile } from "./store";
+import type { Signer } from "./signer";
+import { authFetch } from "./http-auth";
 
 // ─── Channel Creation (kind 40) ───
 
 export async function createChannel(
   name: string,
   about: string,
-  privateKey: Uint8Array
+  signer: Signer
 ): Promise<string> {
   const content = JSON.stringify({ name, about, picture: "" });
-  const event = createEvent(KIND_CHANNEL_CREATE, content, [], privateKey);
+  const event = await signer.signEvent({ kind: KIND_CHANNEL_CREATE, content, tags: [] });
   await pool.publish(event);
 
   // Auto-add creator as channel owner in DB
-  const store = useAppStore.getState();
-  const pubkey = store.keys?.publicKey || event.pubkey;
+  const pubkey = signer.pubkey;
   try {
-    await fetch(`/api/channels/${event.id}/members`, {
+    await authFetch(signer, `/api/channels/${event.id}/members`, {
       method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "x-pubkey": pubkey,
-      },
+      headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ pubkey, role: "owner" }),
     });
   } catch {
@@ -45,7 +42,7 @@ export async function createChannel(
 export async function sendChannelMessage(
   channelId: string,
   content: string,
-  privateKey: Uint8Array,
+  signer: Signer,
   replyTo?: string
 ): Promise<string> {
   const tags: string[][] = [["e", channelId, "", "root"]];
@@ -53,7 +50,7 @@ export async function sendChannelMessage(
     tags.push(["e", replyTo, "", "reply"]);
   }
 
-  const event = createEvent(KIND_CHANNEL_MESSAGE, content, tags, privateKey);
+  const event = await signer.signEvent({ kind: KIND_CHANNEL_MESSAGE, content, tags });
   await pool.publish(event);
   return event.id;
 }
@@ -157,11 +154,9 @@ export function fetchProfile(pubkey: string) {
 
       if (!store.profiles[pubkey]) {
         try {
-          const keys = store.keys;
-          if (!keys) return;
-          const res = await fetch(`/api/members/search?q=${pubkey}`, {
-            headers: { "x-pubkey": keys.publicKey },
-          });
+          const signer = store.signer;
+          if (!signer) return;
+          const res = await authFetch(signer, `/api/members/search?q=${pubkey}`);
           const data = await res.json();
           const member = data.members?.[0];
           if (member) {
@@ -188,11 +183,9 @@ export async function initChat() {
   subscribeToChannels();
 
   // Load user's channel memberships
-  if (store.keys) {
+  if (store.signer) {
     try {
-      const res = await fetch("/api/channels/my", {
-        headers: { "x-pubkey": store.keys.publicKey },
-      });
+      const res = await authFetch(store.signer, "/api/channels/my");
       const data = await res.json();
       const ids = new Set<string>((data.channels || []).map((c: { id: string }) => c.id));
       store.setMyChannelIds(ids);

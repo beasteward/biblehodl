@@ -17,6 +17,7 @@ export default function ChatView() {
   const messages = useAppStore((s) => s.messages);
   const profiles = useAppStore((s) => s.profiles);
   const keys = useAppStore((s) => s.keys);
+  const signer = useAppStore((s) => s.signer);
   const [input, setInput] = useState("");
   const [sending, setSending] = useState(false);
   const [showMembers, setShowMembers] = useState(false);
@@ -54,14 +55,14 @@ export default function ChatView() {
   }, [channelMessages, profiles]);
 
   const handleSend = async () => {
-    if (!input.trim() || !activeChannelId || !keys) return;
+    if (!input.trim() || !activeChannelId || !keys || !signer) return;
     setSending(true);
     try {
       if (isDM) {
         const partnerPubkey = activeChannelId.replace("dm-", "");
-        await sendDirectMessage(partnerPubkey, input.trim(), keys.privateKey);
+        await sendDirectMessage(partnerPubkey, input.trim(), signer);
       } else {
-        await sendChannelMessage(activeChannelId, input.trim(), keys.privateKey);
+        await sendChannelMessage(activeChannelId, input.trim(), signer);
       }
       setInput("");
     } catch (err) {

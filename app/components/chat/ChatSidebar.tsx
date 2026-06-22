@@ -28,6 +28,7 @@ export default function ChatSidebar() {
   const addChannel = useAppStore((s) => s.addChannel);
   const profiles = useAppStore((s) => s.profiles);
   const keys = useAppStore((s) => s.keys);
+  const signer = useAppStore((s) => s.signer);
   const [showNew, setShowNew] = useState<false | "channel" | "dm">(false);
   const [newName, setNewName] = useState("");
   const [newAbout, setNewAbout] = useState("");
@@ -36,10 +37,10 @@ export default function ChatSidebar() {
   const [search, setSearch] = useState("");
 
   const handleCreateChannel = async () => {
-    if (!newName.trim() || !keys) return;
+    if (!newName.trim() || !keys || !signer) return;
     setCreating(true);
     try {
-      const id = await createChannel(newName.trim(), newAbout.trim(), keys.privateKey);
+      const id = await createChannel(newName.trim(), newAbout.trim(), signer);
       addChannel({ id, name: newName.trim(), about: newAbout.trim() });
       // Update membership set
       const store = useAppStore.getState();

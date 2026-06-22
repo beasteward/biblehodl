@@ -1,7 +1,7 @@
 // BLOSSOM file upload client
 // BUD-02: Upload blobs with signed auth events
 
-import { createEvent } from "./nostr";
+import type { Signer } from "./signer";
 
 const BLOSSOM_URL = process.env.NEXT_PUBLIC_BLOSSOM_URL || "http://localhost:3100";
 
@@ -22,21 +22,20 @@ async function hashFile(file: File): Promise<string> {
 
 export async function uploadBlob(
   file: File,
-  privateKey: Uint8Array
+  signer: Signer
 ): Promise<BlobDescriptor> {
   const hash = await hashFile(file);
 
   // Create BUD-02 auth event (kind 24242)
-  const authEvent = createEvent(
-    24242,
-    `Upload ${file.name}`,
-    [
+  const authEvent = await signer.signEvent({
+    kind: 24242,
+    content: `Upload ${file.name}`,
+    tags: [
       ["t", "upload"],
       ["x", hash],
       ["expiration", String(Math.floor(Date.now() / 1000) + 300)],
     ],
-    privateKey
-  );
+  });
 
   const authHeader = `Nostr ${btoa(JSON.stringify(authEvent))}`;
 
@@ -58,18 +57,17 @@ export async function uploadBlob(
 
 export async function deleteBlob(
   sha256: string,
-  privateKey: Uint8Array
+  signer: Signer
 ): Promise<void> {
-  const authEvent = createEvent(
-    24242,
-    `Delete ${sha256}`,
-    [
+  const authEvent = await signer.signEvent({
+    kind: 24242,
+    content: `Delete ${sha256}`,
+    tags: [
       ["t", "delete"],
       ["x", sha256],
       ["expiration", String(Math.floor(Date.now() / 1000) + 300)],
     ],
-    privateKey
-  );
+  });
 
   const authHeader = `Nostr ${btoa(JSON.stringify(authEvent))}`;
 

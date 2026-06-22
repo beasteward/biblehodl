@@ -2,7 +2,8 @@
 // Publishes a kind 42 event linking the saved blob to the meeting
 
 import { pool } from "./relay-pool";
-import { createEvent, KIND_CHANNEL_MESSAGE } from "./nostr";
+import { KIND_CHANNEL_MESSAGE } from "./nostr";
+import type { Signer } from "./signer";
 import { uploadBlob, getBlobUrl } from "./blossom";
 
 export interface WhiteboardMeta {
@@ -18,7 +19,7 @@ export interface WhiteboardMeta {
 export async function saveWhiteboard(
   meetingId: string,
   snapshotJson: string,
-  privateKey: Uint8Array
+  signer: Signer
 ): Promise<WhiteboardMeta> {
   // Create a File from the JSON snapshot
   const file = new File(
@@ -28,7 +29,7 @@ export async function saveWhiteboard(
   );
 
   // Upload to BLOSSOM
-  const blob = await uploadBlob(file, privateKey);
+  const blob = await uploadBlob(file, signer);
 
   const meta: WhiteboardMeta = {
     type: "whiteboard-save",
@@ -45,7 +46,7 @@ export async function saveWhiteboard(
     ["t", "whiteboard-save"],
     ["x", blob.sha256],
   ];
-  const event = createEvent(KIND_CHANNEL_MESSAGE, content, tags, privateKey);
+  const event = await signer.signEvent({ kind: KIND_CHANNEL_MESSAGE, content, tags });
   await pool.publish(event);
 
   return meta;

@@ -1,25 +1,9 @@
-// Game API client
+// Game API client (NIP-98 authenticated)
 
-import { createEvent } from "./nostr";
+import type { Signer } from "./signer";
+import { authFetch } from "./http-auth";
 
-function getAuthHeaders(privateKey?: Uint8Array, pubkey?: string): Record<string, string> {
-  const headers: Record<string, string> = { "Content-Type": "application/json" };
-
-  if (privateKey) {
-    // NIP-98 auth event
-    const event = createEvent(
-      27235,
-      "",
-      [["expiration", String(Math.floor(Date.now() / 1000) + 300)]],
-      privateKey
-    );
-    headers["Authorization"] = `Nostr ${btoa(JSON.stringify(event))}`;
-  } else if (pubkey) {
-    headers["x-pubkey"] = pubkey;
-  }
-
-  return headers;
-}
+const JSON_HEADERS = { "Content-Type": "application/json" };
 
 export interface GameQuestion {
   text: string;
@@ -61,11 +45,11 @@ export async function createGame(
     timePerQuestion: number;
     questions: GameQuestion[];
   },
-  pubkey: string
+  signer: Signer
 ): Promise<Game> {
-  const res = await fetch("/api/games", {
+  const res = await authFetch(signer, "/api/games", {
     method: "POST",
-    headers: getAuthHeaders(undefined, pubkey),
+    headers: JSON_HEADERS,
     body: JSON.stringify(data),
   });
   if (!res.ok) {
@@ -75,10 +59,9 @@ export async function createGame(
   return res.json();
 }
 
-export async function deleteGame(gameId: string, pubkey: string): Promise<void> {
-  const res = await fetch(`/api/games/${gameId}`, {
+export async function deleteGame(gameId: string, signer: Signer): Promise<void> {
+  const res = await authFetch(signer, `/api/games/${gameId}`, {
     method: "DELETE",
-    headers: getAuthHeaders(undefined, pubkey),
   });
   if (!res.ok) {
     const err = await res.json();
@@ -88,10 +71,9 @@ export async function deleteGame(gameId: string, pubkey: string): Promise<void> 
 
 // ─── Sessions ───
 
-export async function createSession(gameId: string, pubkey: string) {
-  const res = await fetch(`/api/games/${gameId}/sessions`, {
+export async function createSession(gameId: string, signer: Signer) {
+  const res = await authFetch(signer, `/api/games/${gameId}/sessions`, {
     method: "POST",
-    headers: getAuthHeaders(undefined, pubkey),
   });
   if (!res.ok) {
     const err = await res.json();
@@ -103,12 +85,12 @@ export async function createSession(gameId: string, pubkey: string) {
 export async function joinSession(
   gameId: string,
   sessionId: string,
-  pubkey: string,
+  signer: Signer,
   displayName: string
 ) {
-  const res = await fetch(`/api/games/${gameId}/sessions/${sessionId}/join`, {
+  const res = await authFetch(signer, `/api/games/${gameId}/sessions/${sessionId}/join`, {
     method: "POST",
-    headers: getAuthHeaders(undefined, pubkey),
+    headers: JSON_HEADERS,
     body: JSON.stringify({ displayName }),
   });
   if (!res.ok) {
@@ -118,10 +100,9 @@ export async function joinSession(
   return res.json();
 }
 
-export async function advanceQuestion(gameId: string, sessionId: string, pubkey: string) {
-  const res = await fetch(`/api/games/${gameId}/sessions/${sessionId}/next`, {
+export async function advanceQuestion(gameId: string, sessionId: string, signer: Signer) {
+  const res = await authFetch(signer, `/api/games/${gameId}/sessions/${sessionId}/next`, {
     method: "POST",
-    headers: getAuthHeaders(undefined, pubkey),
   });
   if (!res.ok) {
     const err = await res.json();
@@ -133,13 +114,13 @@ export async function advanceQuestion(gameId: string, sessionId: string, pubkey:
 export async function submitAnswer(
   gameId: string,
   sessionId: string,
-  pubkey: string,
+  signer: Signer,
   questionId: string,
   selectedIndex: number
 ) {
-  const res = await fetch(`/api/games/${gameId}/sessions/${sessionId}/answer`, {
+  const res = await authFetch(signer, `/api/games/${gameId}/sessions/${sessionId}/answer`, {
     method: "POST",
-    headers: getAuthHeaders(undefined, pubkey),
+    headers: JSON_HEADERS,
     body: JSON.stringify({ questionId, selectedIndex }),
   });
   if (!res.ok) {

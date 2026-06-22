@@ -35,10 +35,8 @@ export default function AppShell() {
 
   useEffect(() => {
     initChat().then(() => {
-      if (keys?.publicKey) {
-        // Pass privateKey for local signer, empty array for NIP-07
-        const pk = keys.privateKey?.length > 0 ? keys.privateKey : new Uint8Array(0);
-        subscribeToDMs(pk);
+      if (keys?.publicKey && signer) {
+        subscribeToDMs(signer);
         subscribeToCalendarEvents([keys.publicKey]);
         initMeetings();
       }

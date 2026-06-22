@@ -24,17 +24,18 @@ const roleColors: Record<string, string> = {
 
 function CreateTeamModal({ onClose, onCreated }: { onClose: () => void; onCreated: () => void }) {
   const keys = useAppStore((s) => s.keys);
+  const signer = useAppStore((s) => s.signer);
   const [name, setName] = useState("");
   const [description, setDescription] = useState("");
   const [creating, setCreating] = useState(false);
   const [error, setError] = useState("");
 
   const handleCreate = async () => {
-    if (!keys || !name.trim()) return;
+    if (!keys || !signer || !name.trim()) return;
     setCreating(true);
     setError("");
     try {
-      await createTeam(name.trim(), description.trim(), keys.publicKey);
+      await createTeam(name.trim(), description.trim(), signer);
       onCreated();
       onClose();
     } catch (err) {
@@ -85,16 +86,17 @@ function CreateTeamModal({ onClose, onCreated }: { onClose: () => void; onCreate
 
 function JoinTeamModal({ onClose, onJoined }: { onClose: () => void; onJoined: () => void }) {
   const keys = useAppStore((s) => s.keys);
+  const signer = useAppStore((s) => s.signer);
   const [code, setCode] = useState("");
   const [joining, setJoining] = useState(false);
   const [error, setError] = useState("");
 
   const handleJoin = async () => {
-    if (!keys || !code.trim()) return;
+    if (!keys || !signer || !code.trim()) return;
     setJoining(true);
     setError("");
     try {
-      await joinTeam(code.trim(), keys.publicKey);
+      await joinTeam(code.trim(), signer);
       onJoined();
       onClose();
     } catch (err) {
@@ -137,6 +139,7 @@ function JoinTeamModal({ onClose, onJoined }: { onClose: () => void; onJoined: (
 
 function TeamDetailView({ teamId, onBack }: { teamId: string; onBack: () => void }) {
   const keys = useAppStore((s) => s.keys);
+  const signer = useAppStore((s) => s.signer);
   const profiles = useAppStore((s) => s.profiles);
   const [team, setTeam] = useState<TeamDetail | null>(null);
   const [loading, setLoading] = useState(true);
@@ -147,10 +150,10 @@ function TeamDetailView({ teamId, onBack }: { teamId: string; onBack: () => void
   const [creatingInvite, setCreatingInvite] = useState(false);
 
   const load = useCallback(async () => {
-    if (!keys) return;
+    if (!keys || !signer) return;
     setLoading(true);
     try {
-      const data = await fetchTeam(teamId, keys.publicKey);
+      const data = await fetchTeam(teamId, signer);
       setTeam(data);
     } catch (err) {
       console.error(err);
@@ -163,10 +166,10 @@ function TeamDetailView({ teamId, onBack }: { teamId: string; onBack: () => void
   const isAdmin = team?.myRole === "owner" || team?.myRole === "admin";
 
   const handleAddMember = async () => {
-    if (!keys || !newPubkey.trim()) return;
+    if (!keys || !signer || !newPubkey.trim()) return;
     setAdding(true);
     try {
-      await addMember(teamId, newPubkey.trim(), newRole, keys.publicKey);
+      await addMember(teamId, newPubkey.trim(), newRole, signer);
       setNewPubkey("");
       load();
     } catch (err) {
@@ -176,9 +179,9 @@ function TeamDetailView({ teamId, onBack }: { teamId: string; onBack: () => void
   };
 
   const handleRemoveMember = async (pubkey: string) => {
-    if (!keys || !confirm("Remove this member?")) return;
+    if (!keys || !signer || !confirm("Remove this member?")) return;
     try {
-      await removeMember(teamId, pubkey, keys.publicKey);
+      await removeMember(teamId, pubkey, signer);
       load();
     } catch (err) {
       alert(err instanceof Error ? err.message : "Failed to remove member");
@@ -186,10 +189,10 @@ function TeamDetailView({ teamId, onBack }: { teamId: string; onBack: () => void
   };
 
   const handleCreateInvite = async () => {
-    if (!keys) return;
+    if (!keys || !signer) return;
     setCreatingInvite(true);
     try {
-      const invite = await createInvite(teamId, keys.publicKey);
+      const invite = await createInvite(teamId, signer);
       setInviteCode(invite.code);
       load();
     } catch (err) {
@@ -322,6 +325,7 @@ function TeamDetailView({ teamId, onBack }: { teamId: string; onBack: () => void
 
 export default function TeamManager() {
   const keys = useAppStore((s) => s.keys);
+  const signer = useAppStore((s) => s.signer);
   const [teams, setTeams] = useState<Team[]>([]);
   const [loading, setLoading] = useState(true);
   const [showCreate, setShowCreate] = useState(false);
@@ -329,10 +333,10 @@ export default function TeamManager() {
   const [selectedTeamId, setSelectedTeamId] = useState<string | null>(null);
 
   const loadTeams = useCallback(async () => {
-    if (!keys) return;
+    if (!keys || !signer) return;
     setLoading(true);
     try {
-      const data = await fetchTeams(keys.publicKey);
+      const data = await fetchTeams(signer);
       setTeams(data);
     } catch (err) {
       console.error(err);

@@ -10,7 +10,7 @@ export async function POST(
   { params }: { params: Promise<{ teamId: string }> }
 ) {
   const { teamId } = await params;
-  const pubkey = getPubkeyFromRequest(request);
+  const pubkey = await getPubkeyFromRequest(request);
   if (!pubkey) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }

@@ -3,8 +3,10 @@
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useAppStore } from "./lib/store";
-import { createLocalSigner, createNip07Signer, hasNip07Extension, getNip07PublicKey } from "./lib/signer";
+import { createNip07Signer, hasNip07Extension, getNip07PublicKey } from "./lib/signer";
+import { authFetch } from "./lib/http-auth";
 import LoginScreen from "./components/auth/LoginScreen";
+import UnlockScreen from "./components/auth/UnlockScreen";
 import AppShell from "./components/layout/AppShell";
 
 export default function Home() {
@@ -20,28 +22,24 @@ export default function Home() {
   const setMemberProfile = useAppStore((s) => s.setMemberProfile);
   const [checking, setChecking] = useState(false);
 
-  // Restore signer on reload from persisted signerMode
+  // Restore signer on reload from persisted signerMode.
+  // NIP-07: recreate from the extension. Local: require passphrase via UnlockScreen.
   useEffect(() => {
-    if (signer || !keys || !signerMode) return;
+    if (signer || !keys || signerMode !== "nip07") return;
 
-    if (signerMode === "nip07") {
-      if (hasNip07Extension()) {
-        getNip07PublicKey()
-          .then((pubkey) => setSigner(createNip07Signer(pubkey)))
-          .catch(() => {
-            // Extension gone — clear auth state
-            setKeys(null);
-            setSignerMode(null);
-            setIsRegistered(false);
-          });
-      } else {
-        // Extension not available — clear auth
-        setKeys(null);
-        setSignerMode(null);
-        setIsRegistered(false);
-      }
-    } else if (signerMode === "local" && keys.privateKey?.length > 0) {
-      setSigner(createLocalSigner(keys.privateKey));
+    if (hasNip07Extension()) {
+      getNip07PublicKey()
+        .then((pubkey) => setSigner(createNip07Signer(pubkey)))
+        .catch(() => {
+          setKeys(null);
+          setSignerMode(null);
+          setIsRegistered(false);
+        });
+    } else {
+      // Extension not available — clear auth
+      setKeys(null);
+      setSignerMode(null);
+      setIsRegistered(false);
     }
   }, [signer, keys, signerMode, setSigner, setKeys, setSignerMode, setIsRegistered]);
 
@@ -49,13 +47,11 @@ export default function Home() {
   const [checkedThisSession, setCheckedThisSession] = useState(false);
 
   useEffect(() => {
-    if (!keys || checkedThisSession) return;
+    if (!keys || !signer || checkedThisSession) return;
 
     setChecking(true);
     setCheckedThisSession(true);
-    fetch("/api/auth/check", {
-      headers: { "x-pubkey": keys.publicKey },
-    })
+    authFetch(signer, "/api/auth/check")
       .then((res) => res.json())
       .then((data) => {
         if (data.registered) {
@@ -75,9 +71,12 @@ export default function Home() {
         setIsRegistered(true);
       })
       .finally(() => setChecking(false));
-  }, [keys, checkedThisSession, router, setIsRegistered, setMemberProfile]);
+  }, [keys, signer, checkedThisSession, router, setIsRegistered, setMemberProfile]);
 
   if (!keys) return <LoginScreen />;
+
+  // Local session restored from storage but not yet unlocked.
+  if (signerMode === "local" && !signer) return <UnlockScreen />;
 
   if (checking || (!isRegistered && keys)) {
     return (

@@ -36,6 +36,7 @@ function getFileIcon(type?: string): string {
 
 export default function FilesView() {
   const keys = useAppStore((s) => s.keys);
+  const signer = useAppStore((s) => s.signer);
   const [blobs, setBlobs] = useState<BlobDescriptor[]>([]);
   const [loading, setLoading] = useState(true);
   const [uploading, setUploading] = useState(false);
@@ -62,12 +63,12 @@ export default function FilesView() {
   }, [keys]);
 
   const handleUpload = async (files: FileList | File[]) => {
-    if (!keys) return;
+    if (!keys || !signer) return;
     setUploading(true);
     setError("");
     try {
       for (const file of Array.from(files)) {
-        const blob = await uploadBlob(file, keys.privateKey);
+        const blob = await uploadBlob(file, signer);
         setBlobs((prev) => [blob, ...prev]);
       }
     } catch (err) {
@@ -78,9 +79,9 @@ export default function FilesView() {
   };
 
   const handleDelete = async (sha256: string) => {
-    if (!keys || !confirm("Delete this file?")) return;
+    if (!keys || !signer || !confirm("Delete this file?")) return;
     try {
-      await deleteBlob(sha256, keys.privateKey);
+      await deleteBlob(sha256, signer);
       setBlobs((prev) => prev.filter((b) => b.sha256 !== sha256));
     } catch (err) {
       console.error("Delete failed:", err);

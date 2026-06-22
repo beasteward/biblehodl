@@ -38,6 +38,7 @@ export default function GamePlay({
   onGameFinished,
 }: Props) {
   const keys = useAppStore((s) => s.keys);
+  const signer = useAppStore((s) => s.signer);
   const [timeLeft, setTimeLeft] = useState(timePerQuestion);
   const [selectedIndex, setSelectedIndex] = useState<number | null>(null);
   const [result, setResult] = useState<{ correct: boolean; correctIndex: number; score: number } | null>(null);
@@ -96,12 +97,12 @@ export default function GamePlay({
   }, [question.id, timePerQuestion]);
 
   const handleAnswer = useCallback(async (index: number) => {
-    if (!keys || selectedIndex !== null || timeLeft === 0) return;
+    if (!keys || !signer || selectedIndex !== null || timeLeft === 0) return;
     setSelectedIndex(index);
     setSubmitting(true);
 
     try {
-      const res = await submitAnswer(gameId, sessionId, keys.publicKey, question.id, index);
+      const res = await submitAnswer(gameId, sessionId, signer, question.id, index);
       setResult({ correct: res.correct, correctIndex: res.correctIndex, score: res.score });
     } catch (err) {
       console.error("Failed to submit answer:", err);
@@ -111,10 +112,10 @@ export default function GamePlay({
   }, [keys, selectedIndex, timeLeft, gameId, sessionId, question.id]);
 
   const handleNextQuestion = async () => {
-    if (!keys) return;
+    if (!keys || !signer) return;
     setAdvancing(true);
     try {
-      const res = await advanceQuestion(gameId, sessionId, keys.publicKey);
+      const res = await advanceQuestion(gameId, sessionId, signer);
       if (res.finished) {
         onGameFinished(res.players.map((p: { pubkey: string; displayName: string; score: number }) => ({
           pubkey: p.pubkey,
