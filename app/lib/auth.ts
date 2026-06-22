@@ -1,51 +1,85 @@
-// Nostr signature auth for API routes
-// Client signs a JSON payload with their nsec, server verifies with their pubkey
+// Server-side NIP-98 HTTP Auth verification.
+//
+// The client signs a kind-27235 event bound to the request URL + method. We
+// verify the signature, freshness, URL/method binding, and single-use. There is
+// NO `x-pubkey` fallback — an unverified header can never establish identity.
 
 import { verifyEvent, type Event } from "nostr-tools";
 
-export interface AuthPayload {
-  pubkey: string;
-  event: Event;
+const FRESHNESS_WINDOW_S = 60;
+const REPLAY_TTL_MS = 90_000;
+
+// In-memory single-use cache (event id -> expiry). Note: per-instance only; a
+// multi-instance deployment should back this with a shared store (Redis).
+const seenEventIds = new Map<string, number>();
+
+function rememberOnce(id: string): boolean {
+  const nowMs = Date.now();
+  // opportunistic cleanup
+  if (seenEventIds.size > 5000) {
+    for (const [k, exp] of seenEventIds) if (exp < nowMs) seenEventIds.delete(k);
+  }
+  if (seenEventIds.has(id)) return false;
+  seenEventIds.set(id, nowMs + REPLAY_TTL_MS);
+  return true;
 }
 
-/**
- * Verify a Nostr-signed auth header.
- * Client sends: Authorization: Nostr <base64-encoded signed event>
- * Event kind 27235 (NIP-98 HTTP Auth), content = JSON body hash or empty
- */
-export function verifyNostrAuth(authHeader: string | null): string | null {
-  if (!authHeader?.startsWith("Nostr ")) return null;
+function tagValue(event: Event, name: string): string | undefined {
+  return event.tags.find((t) => t[0] === name)?.[1];
+}
 
+/** Compare only path + query so reverse proxies (Caddy) don't break URL binding. */
+function samePathAndQuery(a: string, b: string): boolean {
   try {
-    const encoded = authHeader.slice(6);
-    const event: Event = JSON.parse(atob(encoded));
-
-    // Verify the event signature
-    if (!verifyEvent(event)) return null;
-
-    // Check kind 27235 (NIP-98) 
-    if (event.kind !== 27235) return null;
-
-    // Check timestamp is within 5 minutes
-    const now = Math.floor(Date.now() / 1000);
-    if (Math.abs(now - event.created_at) > 300) return null;
-
-    return event.pubkey;
+    const ua = new URL(a);
+    const ub = new URL(b);
+    return ua.pathname + ua.search === ub.pathname + ub.search;
   } catch {
-    return null;
+    return false;
   }
 }
 
 /**
- * Extract pubkey from request, falling back to x-pubkey header for simpler auth.
- * In production, always use Nostr signature auth.
+ * Verify a NIP-98 `Authorization: Nostr <base64 event>` header.
+ * Returns the authenticated pubkey, or null.
  */
-export function getPubkeyFromRequest(request: Request): string | null {
-  // Try Nostr signature auth first
+export async function verifyNostrAuth(request: Request): Promise<string | null> {
   const authHeader = request.headers.get("authorization");
-  const pubkey = verifyNostrAuth(authHeader);
-  if (pubkey) return pubkey;
+  if (!authHeader?.startsWith("Nostr ")) return null;
 
-  // Fallback: x-pubkey header (for development simplicity)
-  return request.headers.get("x-pubkey");
+  let event: Event;
+  try {
+    event = JSON.parse(atob(authHeader.slice(6)));
+  } catch {
+    return null;
+  }
+
+  // Structural + signature checks
+  if (event.kind !== 27235) return null;
+  if (!verifyEvent(event)) return null;
+
+  // Freshness
+  const nowS = Math.floor(Date.now() / 1000);
+  if (Math.abs(nowS - event.created_at) > FRESHNESS_WINDOW_S) return null;
+
+  // Method binding
+  const method = tagValue(event, "method");
+  if (!method || method.toUpperCase() !== request.method.toUpperCase()) return null;
+
+  // URL binding (path + query)
+  const u = tagValue(event, "u");
+  if (!u || !samePathAndQuery(u, request.url)) return null;
+
+  // Single-use (replay protection)
+  if (!rememberOnce(event.id)) return null;
+
+  return event.pubkey;
+}
+
+/**
+ * Resolve the authenticated pubkey for a request, or null if unauthenticated.
+ * Always requires a valid NIP-98 signature.
+ */
+export async function getPubkeyFromRequest(request: Request): Promise<string | null> {
+  return verifyNostrAuth(request);
 }

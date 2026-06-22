@@ -5,7 +5,7 @@ import { isAdminOfAnyTeam } from "../../../lib/membership";
 import crypto from "crypto";
 
 export async function GET(request: Request) {
-  const pubkey = getPubkeyFromRequest(request);
+  const pubkey = await getPubkeyFromRequest(request);
   if (!pubkey) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
   const isAdmin = await isAdminOfAnyTeam(pubkey);
@@ -20,7 +20,7 @@ export async function GET(request: Request) {
 }
 
 export async function POST(request: Request) {
-  const pubkey = getPubkeyFromRequest(request);
+  const pubkey = await getPubkeyFromRequest(request);
   if (!pubkey) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
   const isAdmin = await isAdminOfAnyTeam(pubkey);

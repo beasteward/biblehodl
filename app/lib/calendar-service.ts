@@ -3,11 +3,9 @@
 // kind 31923 — time-based calendar event
 
 import { pool } from "./relay-pool";
-import { createEvent, KIND_CALENDAR_EVENT } from "./nostr";
 import { useAppStore } from "./store";
 import type { CalendarEvent } from "./store";
-import { finalizeEvent, getPublicKey } from "nostr-tools";
-import type { UnsignedEvent } from "nostr-tools";
+import type { Signer } from "./signer";
 
 const KIND_TIME_CALENDAR_EVENT = 31923;
 const KIND_CALENDAR_RSVP = 31925;
@@ -25,9 +23,9 @@ export interface CreateEventInput {
 
 export async function createCalendarEvent(
   input: CreateEventInput,
-  privateKey: Uint8Array
+  signer: Signer
 ): Promise<string> {
-  const pubkey = getPublicKey(privateKey);
+  const pubkey = signer.pubkey;
   const dTag = crypto.randomUUID();
 
   const tags: string[][] = [
@@ -50,15 +48,11 @@ export async function createCalendarEvent(
 
   const kind = input.allDay ? 31922 : KIND_TIME_CALENDAR_EVENT;
 
-  const event: UnsignedEvent = {
+  const signed = await signer.signEvent({
     kind,
-    created_at: Math.floor(Date.now() / 1000),
     tags,
     content: input.description || "",
-    pubkey,
-  };
-
-  const signed = finalizeEvent(event, privateKey);
+  });
   await pool.publish(signed);
 
   // Add to local store
@@ -133,12 +127,10 @@ export async function rsvpToEvent(
   eventId: string,
   eventPubkey: string,
   status: "accepted" | "declined" | "tentative",
-  privateKey: Uint8Array
+  signer: Signer
 ) {
-  const pubkey = getPublicKey(privateKey);
-  const event: UnsignedEvent = {
+  const signed = await signer.signEvent({
     kind: KIND_CALENDAR_RSVP,
-    created_at: Math.floor(Date.now() / 1000),
     tags: [
       ["d", eventId],
       ["a", `31923:${eventPubkey}:${eventId}`],
@@ -147,10 +139,7 @@ export async function rsvpToEvent(
       ["l", status, "status"],
     ],
     content: "",
-    pubkey,
-  };
-
-  const signed = finalizeEvent(event, privateKey);
+  });
   await pool.publish(signed);
 }
 

@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useCallback } from "react";
 import { useAppStore } from "../../lib/store";
+import { authFetch } from "../../lib/http-auth";
 import MemberSearch, { type MemberResult } from "../common/MemberSearch";
 
 interface ChannelMemberInfo {
@@ -19,17 +20,16 @@ interface ChannelMembersPanelProps {
 
 export default function ChannelMembersPanel({ channelId, onClose }: ChannelMembersPanelProps) {
   const keys = useAppStore((s) => s.keys);
+  const signer = useAppStore((s) => s.signer);
   const profiles = useAppStore((s) => s.profiles);
   const [members, setMembers] = useState<ChannelMemberInfo[]>([]);
   const [loading, setLoading] = useState(true);
   const [myRole, setMyRole] = useState<string | null>(null);
 
   const fetchMembers = useCallback(async () => {
-    if (!keys) return;
+    if (!keys || !signer) return;
     try {
-      const res = await fetch(`/api/channels/${channelId}/members`, {
-        headers: { "x-pubkey": keys.publicKey },
-      });
+      const res = await authFetch(signer, `/api/channels/${channelId}/members`);
       const data = await res.json();
       setMembers(data.members || []);
       const me = (data.members || []).find((m: ChannelMemberInfo) => m.pubkey === keys.publicKey);
@@ -39,7 +39,7 @@ export default function ChannelMembersPanel({ channelId, onClose }: ChannelMembe
     } finally {
       setLoading(false);
     }
-  }, [channelId, keys]);
+  }, [channelId, keys, signer]);
 
   useEffect(() => {
     fetchMembers();
@@ -48,23 +48,19 @@ export default function ChannelMembersPanel({ channelId, onClose }: ChannelMembe
   const canManage = myRole === "owner" || myRole === "admin";
 
   const handleAdd = async (member: MemberResult) => {
-    if (!keys) return;
-    await fetch(`/api/channels/${channelId}/members`, {
+    if (!keys || !signer) return;
+    await authFetch(signer, `/api/channels/${channelId}/members`, {
       method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "x-pubkey": keys.publicKey,
-      },
+      headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ pubkey: member.pubkey }),
     });
     fetchMembers();
   };
 
   const handleRemove = async (pubkey: string) => {
-    if (!keys) return;
-    await fetch(`/api/channels/${channelId}/members/${pubkey}`, {
+    if (!keys || !signer) return;
+    await authFetch(signer, `/api/channels/${channelId}/members/${pubkey}`, {
       method: "DELETE",
-      headers: { "x-pubkey": keys.publicKey },
     });
     fetchMembers();
   };

@@ -4,12 +4,12 @@
 
 import { pool } from "./relay-pool";
 import {
-  createEvent,
   KIND_CHANNEL_CREATE,
   KIND_CHANNEL_MESSAGE,
 } from "./nostr";
 import { useAppStore } from "./store";
 import type { Meeting, ChatMessage } from "./store";
+import type { Signer } from "./signer";
 import { fetchProfile } from "./chat-service";
 
 // ─── Meeting Room Creation (kind 40, type: "meeting") ───
@@ -18,7 +18,7 @@ export async function createMeeting(
   name: string,
   description: string,
   scheduledAt: number | undefined,
-  privateKey: Uint8Array
+  signer: Signer
 ): Promise<string> {
   const content = JSON.stringify({
     name,
@@ -34,7 +34,7 @@ export async function createMeeting(
     tags.push(["starts", String(scheduledAt)]);
   }
 
-  const event = createEvent(KIND_CHANNEL_CREATE, content, tags, privateKey);
+  const event = await signer.signEvent({ kind: KIND_CHANNEL_CREATE, content, tags });
   await pool.publish(event);
   return event.id;
 }
@@ -44,10 +44,10 @@ export async function createMeeting(
 export async function sendMeetingMessage(
   meetingId: string,
   content: string,
-  privateKey: Uint8Array
+  signer: Signer
 ): Promise<string> {
   const tags: string[][] = [["e", meetingId, "", "root"]];
-  const event = createEvent(KIND_CHANNEL_MESSAGE, content, tags, privateKey);
+  const event = await signer.signEvent({ kind: KIND_CHANNEL_MESSAGE, content, tags });
   await pool.publish(event);
   return event.id;
 }
@@ -57,7 +57,7 @@ export async function sendMeetingMessage(
 export async function updateMeetingStatus(
   meetingId: string,
   status: "active" | "ended",
-  privateKey: Uint8Array
+  signer: Signer
 ): Promise<void> {
   // Publish a kind 42 system message to signal status change
   const content = JSON.stringify({
@@ -68,7 +68,7 @@ export async function updateMeetingStatus(
     ["e", meetingId, "", "root"],
     ["t", "meeting-status"],
   ];
-  const event = createEvent(KIND_CHANNEL_MESSAGE, content, tags, privateKey);
+  const event = await signer.signEvent({ kind: KIND_CHANNEL_MESSAGE, content, tags });
   await pool.publish(event);
 
   // Update local store

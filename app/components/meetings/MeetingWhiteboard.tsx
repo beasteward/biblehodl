@@ -15,6 +15,7 @@ interface Props {
 
 export default function MeetingWhiteboard({ meetingId }: Props) {
   const keys = useAppStore((s) => s.keys);
+  const signer = useAppStore((s) => s.signer);
   const editorRef = useRef<Editor | null>(null);
   const [saving, setSaving] = useState(false);
   const [loading, setLoading] = useState(true);
@@ -54,12 +55,12 @@ export default function MeetingWhiteboard({ meetingId }: Props) {
 
   // Save to BLOSSOM
   const handleSave = useCallback(async () => {
-    if (!keys || !editorRef.current) return;
+    if (!keys || !signer || !editorRef.current) return;
     setSaving(true);
     try {
       const snapshot = editorRef.current.store.getStoreSnapshot();
       const snapshotJson = JSON.stringify(snapshot);
-      await saveWhiteboard(meetingId, snapshotJson, keys.privateKey);
+      await saveWhiteboard(meetingId, snapshotJson, signer);
       setLastSaved(new Date().toLocaleTimeString());
       setHasChanges(false);
     } catch (err) {
@@ -67,7 +68,7 @@ export default function MeetingWhiteboard({ meetingId }: Props) {
     } finally {
       setSaving(false);
     }
-  }, [keys, meetingId]);
+  }, [keys, signer, meetingId]);
 
   // Track changes
   const handleMount = useCallback((editor: Editor) => {

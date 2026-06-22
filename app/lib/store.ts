@@ -1,7 +1,7 @@
 import { create } from "zustand";
 import { persist } from "zustand/middleware";
-import type { NostrKeys } from "./nostr";
-import type { Signer, SignerMode } from "./signer";
+import type { Identity } from "./nostr";
+import type { Signer, SignerType } from "./signer";
 
 export type View = "chat" | "calendar" | "meetings" | "files" | "games" | "team" | "admin";
 
@@ -64,13 +64,21 @@ export interface Profile {
 }
 
 interface AppState {
-  // Auth
-  keys: NostrKeys | null;
-  setKeys: (keys: NostrKeys | null) => void;
+  // Auth — `keys` holds ONLY public identity (no secret material).
+  keys: Identity | null;
+  setKeys: (keys: Identity | null) => void;
   signer: Signer | null;
   setSigner: (signer: Signer | null) => void;
-  signerMode: SignerMode | null;
-  setSignerMode: (mode: SignerMode | null) => void;
+  signerMode: SignerType | null;
+  setSignerMode: (mode: SignerType | null) => void;
+  // Passphrase-encrypted private key (NIP-49). Safe to persist; null for NIP-07.
+  ncryptsec: string | null;
+  setNcryptsec: (value: string | null) => void;
+  // True when a local-mode session is restored from storage but not yet unlocked.
+  locked: boolean;
+  setLocked: (locked: boolean) => void;
+  // Clear all auth state (logout).
+  logout: () => void;
   isRegistered: boolean;
   setIsRegistered: (val: boolean) => void;
   memberProfile: MemberProfile | null;
@@ -127,6 +135,20 @@ export const useAppStore = create<AppState>()(
       setSigner: (signer) => set({ signer }),
       signerMode: null,
       setSignerMode: (signerMode) => set({ signerMode }),
+      ncryptsec: null,
+      setNcryptsec: (ncryptsec) => set({ ncryptsec }),
+      locked: false,
+      setLocked: (locked) => set({ locked }),
+      logout: () =>
+        set({
+          keys: null,
+          signer: null,
+          signerMode: null,
+          ncryptsec: null,
+          locked: false,
+          isRegistered: false,
+          memberProfile: null,
+        }),
       isRegistered: false,
       setIsRegistered: (isRegistered) => set({ isRegistered }),
       memberProfile: null,
@@ -227,9 +249,10 @@ export const useAppStore = create<AppState>()(
     {
       name: "nostr-teams-storage",
       partialize: (state) => ({
-        // Only persist keys and view preference
+        // Persist only public identity + encrypted key blob (never raw secrets).
         keys: state.keys,
         signerMode: state.signerMode,
+        ncryptsec: state.ncryptsec,
         currentView: state.currentView,
         channels: state.channels,
         isRegistered: state.isRegistered,

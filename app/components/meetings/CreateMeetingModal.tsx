@@ -10,6 +10,7 @@ interface Props {
 
 export default function CreateMeetingModal({ onClose }: Props) {
   const keys = useAppStore((s) => s.keys);
+  const signer = useAppStore((s) => s.signer);
   const [name, setName] = useState("");
   const [description, setDescription] = useState("");
   const [scheduleDate, setScheduleDate] = useState("");
@@ -18,7 +19,7 @@ export default function CreateMeetingModal({ onClose }: Props) {
   const [creating, setCreating] = useState(false);
 
   const handleCreate = async () => {
-    if (!keys || !name.trim()) return;
+    if (!keys || !signer || !name.trim()) return;
     setCreating(true);
 
     let scheduledAt: number | undefined;
@@ -27,7 +28,7 @@ export default function CreateMeetingModal({ onClose }: Props) {
     }
 
     try {
-      await createMeeting(name.trim(), description.trim(), scheduledAt, keys.privateKey);
+      await createMeeting(name.trim(), description.trim(), scheduledAt, signer);
       onClose();
     } catch (err) {
       console.error("Failed to create meeting:", err);

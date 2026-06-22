@@ -3,7 +3,7 @@
 import { useState, useEffect, useRef } from "react";
 import { useAppStore } from "../../lib/store";
 import { uploadBlob, deleteBlob, getBlobUrl, type BlobDescriptor } from "../../lib/blossom";
-import { createEvent, KIND_CHANNEL_MESSAGE } from "../../lib/nostr";
+import { KIND_CHANNEL_MESSAGE } from "../../lib/nostr";
 import { pool } from "../../lib/relay-pool";
 
 interface MeetingFile {
@@ -39,6 +39,7 @@ function getFileIcon(type?: string): string {
 
 export default function MeetingFiles({ meetingId }: Props) {
   const keys = useAppStore((s) => s.keys);
+  const signer = useAppStore((s) => s.signer);
   const profiles = useAppStore((s) => s.profiles);
   const [files, setFiles] = useState<MeetingFile[]>([]);
   const [loading, setLoading] = useState(true);
@@ -102,13 +103,13 @@ export default function MeetingFiles({ meetingId }: Props) {
 
   // Upload and publish link event
   const handleUpload = async (fileList: FileList | File[]) => {
-    if (!keys) return;
+    if (!keys || !signer) return;
     setUploading(true);
     setError("");
 
     try {
       for (const file of Array.from(fileList)) {
-        const blob = await uploadBlob(file, keys.privateKey);
+        const blob = await uploadBlob(file, signer);
 
         // Publish Nostr event linking file to meeting
         const content = JSON.stringify({
@@ -126,7 +127,7 @@ export default function MeetingFiles({ meetingId }: Props) {
           ["x", blob.sha256],
         ];
 
-        const event = createEvent(KIND_CHANNEL_MESSAGE, content, tags, keys.privateKey);
+        const event = await signer.signEvent({ kind: KIND_CHANNEL_MESSAGE, content, tags });
         await pool.publish(event);
 
         const meetingFile: MeetingFile = {
@@ -147,9 +148,9 @@ export default function MeetingFiles({ meetingId }: Props) {
   };
 
   const handleDelete = async (sha256: string) => {
-    if (!keys || !confirm("Delete this file?")) return;
+    if (!keys || !signer || !confirm("Delete this file?")) return;
     try {
-      await deleteBlob(sha256, keys.privateKey);
+      await deleteBlob(sha256, signer);
       setFiles((prev) => prev.filter((f) => f.blob.sha256 !== sha256));
     } catch (err) {
       console.error("Delete failed:", err);

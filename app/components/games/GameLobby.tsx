@@ -21,6 +21,7 @@ interface Props {
 
 export default function GameLobby({ gameId, sessionId, gameTitle, isAdmin, onGameStart, onBack }: Props) {
   const keys = useAppStore((s) => s.keys);
+  const signer = useAppStore((s) => s.signer);
   const profiles = useAppStore((s) => s.profiles);
   const [players, setPlayers] = useState<Player[]>([]);
   const [joined, setJoined] = useState(false);
@@ -53,9 +54,9 @@ export default function GameLobby({ gameId, sessionId, gameTitle, isAdmin, onGam
 
   // Auto-join on mount
   useEffect(() => {
-    if (!keys || joined) return;
+    if (!keys || !signer || joined) return;
     const displayName = profiles[keys.publicKey]?.displayName || profiles[keys.publicKey]?.name || keys.publicKey.slice(0, 8);
-    joinSession(gameId, sessionId, keys.publicKey, displayName)
+    joinSession(gameId, sessionId, signer, displayName)
       .then(() => setJoined(true))
       .catch(console.error);
   }, [keys, joined, gameId, sessionId, profiles]);
@@ -77,10 +78,10 @@ export default function GameLobby({ gameId, sessionId, gameTitle, isAdmin, onGam
   }, [gameId, sessionId]);
 
   const handleStart = async () => {
-    if (!keys) return;
+    if (!keys || !signer) return;
     setStarting(true);
     try {
-      const result = await advanceQuestion(gameId, sessionId, keys.publicKey);
+      const result = await advanceQuestion(gameId, sessionId, signer);
       // Admin also gets the question directly
       onGameStart({
         question: result.question,

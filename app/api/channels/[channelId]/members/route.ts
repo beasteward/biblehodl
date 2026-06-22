@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { PrismaClient } from "@prisma/client";
+import { getPubkeyFromRequest } from "../../../../lib/auth";
 
 const prisma = new PrismaClient();
 
@@ -41,9 +42,9 @@ export async function POST(
   { params }: { params: Promise<{ channelId: string }> }
 ) {
   const { channelId } = await params;
-  const requesterPubkey = req.headers.get("x-pubkey");
+  const requesterPubkey = await getPubkeyFromRequest(req);
   if (!requesterPubkey) {
-    return NextResponse.json({ error: "Missing x-pubkey header" }, { status: 401 });
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
   // Check requester is owner or admin

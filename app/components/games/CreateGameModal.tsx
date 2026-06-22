@@ -135,6 +135,7 @@ function QuestionEditor({
 
 export default function CreateGameModal({ onClose, onCreated }: Props) {
   const keys = useAppStore((s) => s.keys);
+  const signer = useAppStore((s) => s.signer);
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
   const [timePerQuestion, setTimePerQuestion] = useState(20);
@@ -160,7 +161,7 @@ export default function CreateGameModal({ onClose, onCreated }: Props) {
   };
 
   const handleCreate = async () => {
-    if (!keys) return;
+    if (!keys || !signer) return;
     setError("");
 
     // Validate
@@ -175,7 +176,7 @@ export default function CreateGameModal({ onClose, onCreated }: Props) {
     try {
       await createGame(
         { title: title.trim(), description: description.trim(), timePerQuestion, questions },
-        keys.publicKey
+        signer
       );
       onCreated();
       onClose();

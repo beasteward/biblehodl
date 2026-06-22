@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useCallback } from "react";
 import { useAppStore } from "../../lib/store";
+import { authFetch } from "../../lib/http-auth";
 
 interface MemberRow {
   id: string;
@@ -27,29 +28,30 @@ interface InviteRow {
 
 export default function AdminPanel() {
   const keys = useAppStore((s) => s.keys);
+  const signer = useAppStore((s) => s.signer);
   const [tab, setTab] = useState<"members" | "invites">("members");
   const [members, setMembers] = useState<MemberRow[]>([]);
   const [invites, setInvites] = useState<InviteRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
 
-  const headers = { "x-pubkey": keys?.publicKey || "" };
-
   const fetchMembers = useCallback(async () => {
-    const res = await fetch("/api/admin/members", { headers: { "x-pubkey": keys?.publicKey || "" } });
+    if (!signer) return;
+    const res = await authFetch(signer, "/api/admin/members");
     if (res.ok) {
       const data = await res.json();
       setMembers(data.members);
     }
-  }, [keys?.publicKey]);
+  }, [signer]);
 
   const fetchInvites = useCallback(async () => {
-    const res = await fetch("/api/admin/invites", { headers: { "x-pubkey": keys?.publicKey || "" } });
+    if (!signer) return;
+    const res = await authFetch(signer, "/api/admin/invites");
     if (res.ok) {
       const data = await res.json();
       setInvites(data.invites);
     }
-  }, [keys?.publicKey]);
+  }, [signer]);
 
   useEffect(() => {
     setLoading(true);
@@ -59,10 +61,10 @@ export default function AdminPanel() {
   }, [fetchMembers, fetchInvites]);
 
   const handleRemoveMember = async (memberId: string) => {
-    if (!confirm("Remove this member?")) return;
-    const res = await fetch("/api/admin/members", {
+    if (!signer || !confirm("Remove this member?")) return;
+    const res = await authFetch(signer, "/api/admin/members", {
       method: "DELETE",
-      headers: { ...headers, "Content-Type": "application/json" },
+      headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ memberId }),
     });
     if (res.ok) fetchMembers();
@@ -73,9 +75,10 @@ export default function AdminPanel() {
   };
 
   const handleCreateInvite = async () => {
-    const res = await fetch("/api/admin/invites", {
+    if (!signer) return;
+    const res = await authFetch(signer, "/api/admin/invites", {
       method: "POST",
-      headers: { ...headers, "Content-Type": "application/json" },
+      headers: { "Content-Type": "application/json" },
     });
     if (res.ok) fetchInvites();
     else alert("Failed to create invite");

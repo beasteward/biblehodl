@@ -3,7 +3,7 @@
 import { useState, useEffect, useCallback } from "react";
 import { useAppStore } from "../../lib/store";
 import { fetchGames, createSession, type Game } from "../../lib/game-service";
-import { createEvent, KIND_CHANNEL_MESSAGE } from "../../lib/nostr";
+import { KIND_CHANNEL_MESSAGE } from "../../lib/nostr";
 import { pool } from "../../lib/relay-pool";
 import CreateGameModal from "../games/CreateGameModal";
 import GameSessionView from "../games/GameSession";
@@ -14,6 +14,7 @@ interface Props {
 
 export default function MeetingGames({ meetingId }: Props) {
   const keys = useAppStore((s) => s.keys);
+  const signer = useAppStore((s) => s.signer);
   const profiles = useAppStore((s) => s.profiles);
   const [games, setGames] = useState<Game[]>([]);
   const [loading, setLoading] = useState(true);
@@ -44,7 +45,7 @@ export default function MeetingGames({ meetingId }: Props) {
 
   // Publish a game invite to the meeting channel
   const publishInvite = async (game: Game, sessionId: string) => {
-    if (!keys) return;
+    if (!keys || !signer) return;
 
     const displayName = profiles[keys.publicKey]?.displayName || profiles[keys.publicKey]?.name || "Someone";
     const content = JSON.stringify({
@@ -62,14 +63,14 @@ export default function MeetingGames({ meetingId }: Props) {
       ["t", "game-invite"],
     ];
 
-    const event = createEvent(KIND_CHANNEL_MESSAGE, content, tags, keys.privateKey);
+    const event = await signer.signEvent({ kind: KIND_CHANNEL_MESSAGE, content, tags });
     await pool.publish(event);
   };
 
   const handleHostGame = async (game: Game) => {
-    if (!keys) return;
+    if (!keys || !signer) return;
     try {
-      const session = await createSession(game.id, keys.publicKey);
+      const session = await createSession(game.id, signer);
       await publishInvite(game, session.id);
       setActiveSession({
         gameId: game.id,

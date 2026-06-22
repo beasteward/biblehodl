@@ -5,7 +5,7 @@ import { isAdminOfAnyTeam } from "../../../lib/membership";
 import { removePubkeyFromRelay } from "../../../lib/relay-sync";
 
 export async function GET(request: Request) {
-  const pubkey = getPubkeyFromRequest(request);
+  const pubkey = await getPubkeyFromRequest(request);
   if (!pubkey) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
   const isAdmin = await isAdminOfAnyTeam(pubkey);
@@ -20,7 +20,7 @@ export async function GET(request: Request) {
 }
 
 export async function DELETE(request: Request) {
-  const pubkey = getPubkeyFromRequest(request);
+  const pubkey = await getPubkeyFromRequest(request);
   if (!pubkey) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
   const isAdmin = await isAdminOfAnyTeam(pubkey);

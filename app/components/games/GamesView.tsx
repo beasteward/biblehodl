@@ -78,14 +78,15 @@ function GameDetail({
   onPlay: (sessionId: string) => void;
 }) {
   const keys = useAppStore((s) => s.keys);
+  const signer = useAppStore((s) => s.signer);
   const [startingSession, setStartingSession] = useState(false);
   const isCreator = game.createdBy === keys?.publicKey;
 
   const handleStartSession = async () => {
-    if (!keys) return;
+    if (!keys || !signer) return;
     setStartingSession(true);
     try {
-      const session = await createSession(game.id, keys.publicKey);
+      const session = await createSession(game.id, signer);
       onPlay(session.id);
     } catch (err) {
       console.error("Failed to create session:", err);
@@ -212,6 +213,7 @@ function GameDetail({
 
 export default function GamesView() {
   const keys = useAppStore((s) => s.keys);
+  const signer = useAppStore((s) => s.signer);
   const [games, setGames] = useState<Game[]>([]);
   const [loading, setLoading] = useState(true);
   const [showCreate, setShowCreate] = useState(false);
@@ -242,9 +244,9 @@ export default function GamesView() {
   }, [loadGames]);
 
   const handleDelete = async (gameId: string) => {
-    if (!keys || !confirm("Delete this game and all its sessions?")) return;
+    if (!keys || !signer || !confirm("Delete this game and all its sessions?")) return;
     try {
-      await deleteGame(gameId, keys.publicKey);
+      await deleteGame(gameId, signer);
       setGames((prev) => prev.filter((g) => g.id !== gameId));
     } catch (err) {
       console.error("Failed to delete:", err);

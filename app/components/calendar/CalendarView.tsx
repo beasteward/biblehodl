@@ -191,6 +191,7 @@ export default function CalendarView() {
 
 function CreateEventModal({ onClose }: { onClose: () => void }) {
   const keys = useAppStore((s) => s.keys);
+  const signer = useAppStore((s) => s.signer);
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
   const [location, setLocation] = useState("");
@@ -202,7 +203,7 @@ function CreateEventModal({ onClose }: { onClose: () => void }) {
   const [creating, setCreating] = useState(false);
 
   const handleCreate = async () => {
-    if (!title.trim() || !startDate || !keys) return;
+    if (!title.trim() || !startDate || !keys || !signer) return;
     setCreating(true);
     try {
       const start = allDay
@@ -212,7 +213,7 @@ function CreateEventModal({ onClose }: { onClose: () => void }) {
         ? (allDay ? new Date(endDate + "T23:59:59") : new Date(`${endDate}T${endTime || "23:59"}`))
         : undefined;
 
-      await createCalendarEvent({ title: title.trim(), description: description.trim() || undefined, start, end, location: location.trim() || undefined, allDay }, keys.privateKey);
+      await createCalendarEvent({ title: title.trim(), description: description.trim() || undefined, start, end, location: location.trim() || undefined, allDay }, signer);
       onClose();
     } catch (err) {
       console.error("Failed to create event:", err);

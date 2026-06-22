@@ -1,13 +1,14 @@
 import { NextRequest, NextResponse } from "next/server";
 import { PrismaClient } from "@prisma/client";
+import { getPubkeyFromRequest } from "../../../lib/auth";
 
 const prisma = new PrismaClient();
 
 // GET /api/channels/my — list channel IDs the user is a member of
 export async function GET(req: NextRequest) {
-  const pubkey = req.headers.get("x-pubkey");
+  const pubkey = await getPubkeyFromRequest(req);
   if (!pubkey) {
-    return NextResponse.json({ error: "Missing x-pubkey header" }, { status: 401 });
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
   const memberships = await prisma.channelMember.findMany({

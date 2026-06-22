@@ -19,6 +19,7 @@ interface Props {
 
 export default function MeetingRoom({ meetingId, onBack }: Props) {
   const keys = useAppStore((s) => s.keys);
+  const signer = useAppStore((s) => s.signer);
   const meeting = useAppStore((s) => s.meetings.find((m) => m.id === meetingId));
   const messages = useAppStore((s) => s.messages[meetingId] || []);
   const profiles = useAppStore((s) => s.profiles);
@@ -37,10 +38,10 @@ export default function MeetingRoom({ meetingId, onBack }: Props) {
   }, [messages]);
 
   const handleSend = async () => {
-    if (!keys || !input.trim()) return;
+    if (!keys || !signer || !input.trim()) return;
     setSending(true);
     try {
-      await sendMeetingMessage(meetingId, input.trim(), keys.privateKey);
+      await sendMeetingMessage(meetingId, input.trim(), signer);
       setInput("");
     } catch (err) {
       console.error("Failed to send:", err);
@@ -50,13 +51,13 @@ export default function MeetingRoom({ meetingId, onBack }: Props) {
   };
 
   const handleEndMeeting = async () => {
-    if (!keys) return;
-    await updateMeetingStatus(meetingId, "ended", keys.privateKey);
+    if (!keys || !signer) return;
+    await updateMeetingStatus(meetingId, "ended", signer);
   };
 
   const handleStartMeeting = async () => {
-    if (!keys) return;
-    await updateMeetingStatus(meetingId, "active", keys.privateKey);
+    if (!keys || !signer) return;
+    await updateMeetingStatus(meetingId, "active", signer);
   };
 
   const getDisplayName = (pubkey: string) => {

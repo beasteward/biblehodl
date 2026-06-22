@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useRef } from "react";
 import { useAppStore } from "../../lib/store";
+import { authFetch } from "../../lib/http-auth";
 
 export interface MemberResult {
   id: string;
@@ -24,6 +25,7 @@ export default function MemberSearch({
   excludePubkeys = [],
 }: MemberSearchProps) {
   const keys = useAppStore((s) => s.keys);
+  const signer = useAppStore((s) => s.signer);
   const [query, setQuery] = useState("");
   const [results, setResults] = useState<MemberResult[]>([]);
   const [loading, setLoading] = useState(false);
@@ -41,12 +43,10 @@ export default function MemberSearch({
     if (debounceRef.current) clearTimeout(debounceRef.current);
 
     debounceRef.current = setTimeout(async () => {
-      if (!keys) return;
+      if (!keys || !signer) return;
       setLoading(true);
       try {
-        const res = await fetch(`/api/members/search?q=${encodeURIComponent(query.trim())}`, {
-          headers: { "x-pubkey": keys.publicKey },
-        });
+        const res = await authFetch(signer, `/api/members/search?q=${encodeURIComponent(query.trim())}`);
         const data = await res.json();
         const filtered = (data.members || []).filter(
           (m: MemberResult) => !excludePubkeys.includes(m.pubkey)
