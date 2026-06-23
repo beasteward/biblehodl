@@ -6,7 +6,7 @@ import { useAppStore } from "../../lib/store";
 import { identityFromPubkey, keypairFromNsec } from "../../lib/nostr";
 import { encryptSecretKey } from "../../lib/keystore";
 import {
-  hasNip07Extension,
+  waitForNip07Extension,
   getNip07PublicKey,
   createNip07Signer,
   createLocalSigner,
@@ -30,10 +30,15 @@ export default function LoginScreen() {
   const [busy, setBusy] = useState(false);
 
   useEffect(() => {
-    const check = () => setHasExtension(hasNip07Extension());
-    check();
-    const timer = setTimeout(check, 500);
-    return () => clearTimeout(timer);
+    // Poll for async extension injection rather than a single delayed check,
+    // and flip the CTA the moment window.nostr appears.
+    let cancelled = false;
+    waitForNip07Extension().then((available) => {
+      if (!cancelled) setHasExtension(available);
+    });
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   const handleNip07Login = async () => {

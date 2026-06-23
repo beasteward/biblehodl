@@ -137,3 +137,32 @@ export async function getNip07PublicKey(): Promise<string> {
   }
   return window.nostr!.getPublicKey();
 }
+
+/**
+ * Wait for a NIP-07 extension to inject `window.nostr`.
+ *
+ * Extensions (Alby, nos2x, …) inject asynchronously, so on a cold load
+ * `window.nostr` is frequently absent for the first ~100–500ms. A naive
+ * synchronous check produces false negatives and can log returning users out.
+ * Polls up to `timeoutMs`, resolving true as soon as the extension appears.
+ */
+export function waitForNip07Extension(
+  timeoutMs = 1500,
+  intervalMs = 100
+): Promise<boolean> {
+  if (typeof window === "undefined") return Promise.resolve(false);
+  if (hasNip07Extension()) return Promise.resolve(true);
+
+  return new Promise((resolve) => {
+    const start = Date.now();
+    const timer = setInterval(() => {
+      if (hasNip07Extension()) {
+        clearInterval(timer);
+        resolve(true);
+      } else if (Date.now() - start >= timeoutMs) {
+        clearInterval(timer);
+        resolve(false);
+      }
+    }, intervalMs);
+  });
+}
