@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useAppStore } from "./lib/store";
-import { createNip07Signer, hasNip07Extension, getNip07PublicKey } from "./lib/signer";
+import { createNip07Signer, waitForNip07Extension, getNip07PublicKey } from "./lib/signer";
 import { authFetch } from "./lib/http-auth";
 import LoginScreen from "./components/auth/LoginScreen";
 import UnlockScreen from "./components/auth/UnlockScreen";
@@ -27,20 +27,35 @@ export default function Home() {
   useEffect(() => {
     if (signer || !keys || signerMode !== "nip07") return;
 
-    if (hasNip07Extension()) {
-      getNip07PublicKey()
-        .then((pubkey) => setSigner(createNip07Signer(pubkey)))
-        .catch(() => {
-          setKeys(null);
-          setSignerMode(null);
-          setIsRegistered(false);
-        });
-    } else {
-      // Extension not available — clear auth
+    let cancelled = false;
+    const clearStaleSession = () => {
+      if (cancelled) return;
       setKeys(null);
       setSignerMode(null);
       setIsRegistered(false);
-    }
+    };
+
+    (async () => {
+      // Wait for async injection before deciding the extension is gone —
+      // otherwise a slow inject would falsely log the user out on reload.
+      const available = await waitForNip07Extension();
+      if (cancelled) return;
+      if (!available) {
+        clearStaleSession();
+        return;
+      }
+      try {
+        const pubkey = await getNip07PublicKey();
+        if (cancelled) return;
+        setSigner(createNip07Signer(pubkey));
+      } catch {
+        clearStaleSession();
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
   }, [signer, keys, signerMode, setSigner, setKeys, setSignerMode, setIsRegistered]);
 
   // Always check registration on mount to refresh profile (role, etc.)
@@ -77,6 +92,20 @@ export default function Home() {
 
   // Local session restored from storage but not yet unlocked.
   if (signerMode === "local" && !signer) return <UnlockScreen />;
+
+  // NIP-07 session restored from storage; reconnecting to the extension.
+  // Gate the app here so it never mounts against a null signer (isRegistered
+  // is persisted, so without this it would fall through to <AppShell />).
+  if (signerMode === "nip07" && !signer) {
+    return (
+      <div className="min-h-screen flex items-center justify-center" style={{ background: "var(--bg-primary)" }}>
+        <div className="text-center">
+          <div className="text-4xl mb-4">🔑</div>
+          <p style={{ color: "var(--text-secondary)" }}>Connecting to your Nostr extension…</p>
+        </div>
+      </div>
+    );
+  }
 
   if (checking || (!isRegistered && keys)) {
     return (
