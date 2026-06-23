@@ -44,6 +44,7 @@ export default function JoinPage() {
   const [passphrase, setPassphrase] = useState("");
   const [confirm, setConfirm] = useState("");
   const [savedConfirmed, setSavedConfirmed] = useState(false);
+  const [backedUp, setBackedUp] = useState(false); // copied or downloaded nsec at least once
   const [copied, setCopied] = useState<"nsec" | "npub" | null>(null);
   const [keyError, setKeyError] = useState("");
   const [busy, setBusy] = useState(false);
@@ -129,11 +130,13 @@ export default function JoinPage() {
   const copyToClipboard = (text: string, label: "nsec" | "npub") => {
     navigator.clipboard.writeText(text);
     setCopied(label);
+    if (label === "nsec") setBackedUp(true);
     setTimeout(() => setCopied(null), 2000);
   };
 
   const downloadKeys = () => {
     if (!fresh) return;
+    setBackedUp(true);
     const content = `NOSTR KEYS — KEEP THIS FILE SAFE\n\nPublic Key (npub):\n${fresh.npub}\n\nPrivate Key (nsec) — NEVER SHARE THIS:\n${fresh.nsec}\n\nGenerated: ${new Date().toISOString()}\n`;
     const blob = new Blob([content], { type: "text/plain" });
     const url = URL.createObjectURL(blob);
@@ -209,6 +212,7 @@ export default function JoinPage() {
     setPassphrase("");
     setConfirm("");
     setSavedConfirmed(false);
+    setBackedUp(false);
     setKeyError("");
     setKeyMode("choose");
     setStep("keys");
@@ -310,10 +314,16 @@ export default function JoinPage() {
                   📥 Download Keys as Text File
                 </button>
 
-                <label className="flex items-center gap-2 mb-4 cursor-pointer">
-                  <input type="checkbox" checked={savedConfirmed} onChange={(e) => setSavedConfirmed(e.target.checked)} className="w-4 h-4" style={{ accentColor: "var(--accent)" }} />
-                  <span className="text-sm" style={{ color: "var(--text-secondary)" }}>I&apos;ve saved my key somewhere safe</span>
+                <label className={`flex items-center gap-2 mb-1 ${backedUp ? "cursor-pointer" : "cursor-not-allowed opacity-60"}`}>
+                  <input type="checkbox" disabled={!backedUp} checked={savedConfirmed} onChange={(e) => setSavedConfirmed(e.target.checked)} className="w-4 h-4" style={{ accentColor: "var(--accent)" }} />
+                  <span className="text-sm" style={{ color: "var(--text-secondary)" }}>I&apos;ve saved my recovery key somewhere safe</span>
                 </label>
+                {!backedUp && (
+                  <p className="mb-4 text-xs" style={{ color: "var(--text-muted)" }}>
+                    Copy or download your nsec first — it&apos;s the only way to recover this account.
+                  </p>
+                )}
+                {backedUp && <div className="mb-4" />}
               </>
             )}
 
@@ -334,7 +344,7 @@ export default function JoinPage() {
 
             {keyError && <p className="mb-4 text-sm" style={{ color: "var(--danger)" }}>{keyError}</p>}
 
-            <button onClick={handleSecure} disabled={busy} className="w-full py-3 rounded-lg font-medium text-sm cursor-pointer disabled:opacity-50" style={primaryBtn}>
+            <button onClick={handleSecure} disabled={busy || (isNewKey && !savedConfirmed)} className="w-full py-3 rounded-lg font-medium text-sm cursor-pointer disabled:opacity-50" style={primaryBtn}>
               {busy ? "Securing…" : "Continue"}
             </button>
 
