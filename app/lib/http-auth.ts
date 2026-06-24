@@ -25,6 +25,14 @@ export async function buildNip98Header(
   const tags: string[][] = [
     ["u", absoluteUrl],
     ["method", method.toUpperCase()],
+    // Unique per request. Without this, two identical idempotent requests (e.g.
+    // two GETs to the same URL) signed within the same one-second window produce
+    // byte-identical events with the same id, which the server's single-use
+    // replay cache rejects as a replay (401). React Strict Mode's double-invoked
+    // effects in dev trigger this readily. The nonce keeps every event unique
+    // while preserving replay protection (a verbatim-replayed token still has a
+    // matching id and is still rejected).
+    ["nonce", crypto.randomUUID()],
   ];
   if (body) tags.push(["payload", await sha256Hex(body)]);
 

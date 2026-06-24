@@ -38,25 +38,28 @@ export default function AdminPanel() {
   const fetchMembers = useCallback(async () => {
     if (!signer) return;
     const res = await authFetch(signer, "/api/admin/members");
-    if (res.ok) {
-      const data = await res.json();
-      setMembers(data.members);
+    if (!res.ok) {
+      throw new Error(`Failed to load members (${res.status})`);
     }
+    const data = await res.json();
+    setMembers(data.members);
   }, [signer]);
 
   const fetchInvites = useCallback(async () => {
     if (!signer) return;
     const res = await authFetch(signer, "/api/admin/invites");
-    if (res.ok) {
-      const data = await res.json();
-      setInvites(data.invites);
+    if (!res.ok) {
+      throw new Error(`Failed to load invites (${res.status})`);
     }
+    const data = await res.json();
+    setInvites(data.invites);
   }, [signer]);
 
   useEffect(() => {
     setLoading(true);
+    setError("");
     Promise.all([fetchMembers(), fetchInvites()])
-      .catch(() => setError("Failed to load admin data"))
+      .catch((e) => setError(e instanceof Error ? e.message : "Failed to load admin data"))
       .finally(() => setLoading(false));
   }, [fetchMembers, fetchInvites]);
 
