@@ -190,7 +190,7 @@ export default function ChatView() {
                   <div className="flex-1 h-px" style={{ background: "var(--border)" }} />
                 </div>
               )}
-              <div className={`flex items-start gap-3 group ${showHeader ? "mt-4" : "mt-0.5"}`}>
+              <div className={`flex items-start gap-3 group ${isMe ? "flex-row-reverse" : ""} ${showHeader ? "mt-4" : "mt-0.5"}`}>
                 <div className="w-8 shrink-0">
                   {showHeader && (
                     getAvatar(msg.pubkey) ? (
@@ -205,19 +205,27 @@ export default function ChatView() {
                     )
                   )}
                 </div>
-                <div className="min-w-0 flex-1">
+                <div className={`min-w-0 flex flex-col ${isMe ? "items-end" : "items-start"}`} style={{ maxWidth: "75%" }}>
                   {showHeader && (
-                    <div className="flex items-baseline gap-2">
+                    <div className={`flex items-baseline gap-2 ${isMe ? "flex-row-reverse" : ""}`}>
                       <span className="text-sm font-semibold" style={{ color: isMe ? "var(--accent-light)" : "var(--text-primary)" }}>
                         {isMe ? "You" : getDisplayName(msg.pubkey)}
                       </span>
                       <span className="text-xs" style={{ color: "var(--text-muted)" }}>{time}</span>
                     </div>
                   )}
-                  <p className="text-sm leading-relaxed" style={{ color: "var(--text-primary)" }}>{msg.content}</p>
+                  <p
+                    className="text-sm leading-relaxed rounded-2xl px-3 py-1.5 mt-0.5 inline-block break-words"
+                    style={{
+                      background: isMe ? "var(--accent)" : "var(--bg-tertiary)",
+                      color: isMe ? "white" : "var(--text-primary)",
+                    }}
+                  >
+                    {msg.content}
+                  </p>
                 </div>
                 {!showHeader && (
-                  <span className="text-xs opacity-0 group-hover:opacity-100 shrink-0" style={{ color: "var(--text-muted)" }}>{time}</span>
+                  <span className="text-xs opacity-0 group-hover:opacity-100 shrink-0 self-center" style={{ color: "var(--text-muted)" }}>{time}</span>
                 )}
               </div>
             </div>
