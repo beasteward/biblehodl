@@ -2,6 +2,9 @@
 
 A self-hostable community platform for small groups (50–300 users) built on Nostr. Each community owns their entire stack: relay, file storage, database, and frontend.
 
+## Development
+- [Local Development](./local-dev.md) — run the app natively against production (Option A) or local Dockerized relay + Blossom (Option B)
+
 ## Phase 1: Infrastructure
 - [Infrastructure](./01-infrastructure.md) — Docker Compose stack, Caddy routing, data persistence
 
