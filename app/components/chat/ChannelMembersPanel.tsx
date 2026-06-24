@@ -25,17 +25,23 @@ export default function ChannelMembersPanel({ channelId, onClose }: ChannelMembe
   const [members, setMembers] = useState<ChannelMemberInfo[]>([]);
   const [loading, setLoading] = useState(true);
   const [myRole, setMyRole] = useState<string | null>(null);
+  const [error, setError] = useState("");
 
   const fetchMembers = useCallback(async () => {
     if (!keys || !signer) return;
     try {
       const res = await authFetch(signer, `/api/channels/${channelId}/members`);
+      if (!res.ok) {
+        throw new Error(`Failed to load members (${res.status})`);
+      }
       const data = await res.json();
       setMembers(data.members || []);
       const me = (data.members || []).find((m: ChannelMemberInfo) => m.pubkey === keys.publicKey);
       setMyRole(me?.role || null);
-    } catch {
-      // ignore
+      setError("");
+    } catch (e) {
+      // Surface the failure instead of silently rendering an empty list.
+      setError(e instanceof Error ? e.message : "Failed to load members");
     } finally {
       setLoading(false);
     }
@@ -49,20 +55,40 @@ export default function ChannelMembersPanel({ channelId, onClose }: ChannelMembe
 
   const handleAdd = async (member: MemberResult) => {
     if (!keys || !signer) return;
-    await authFetch(signer, `/api/channels/${channelId}/members`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ pubkey: member.pubkey }),
-    });
-    fetchMembers();
+    try {
+      const res = await authFetch(signer, `/api/channels/${channelId}/members`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ pubkey: member.pubkey }),
+      });
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        throw new Error(data.error || `Failed to add member (${res.status})`);
+      }
+      setError("");
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Failed to add member");
+    } finally {
+      fetchMembers();
+    }
   };
 
   const handleRemove = async (pubkey: string) => {
     if (!keys || !signer) return;
-    await authFetch(signer, `/api/channels/${channelId}/members/${pubkey}`, {
-      method: "DELETE",
-    });
-    fetchMembers();
+    try {
+      const res = await authFetch(signer, `/api/channels/${channelId}/members/${pubkey}`, {
+        method: "DELETE",
+      });
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        throw new Error(data.error || `Failed to remove member (${res.status})`);
+      }
+      setError("");
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Failed to remove member");
+    } finally {
+      fetchMembers();
+    }
   };
 
   const getDisplayName = (m: ChannelMemberInfo) => {
@@ -130,6 +156,10 @@ export default function ChannelMembersPanel({ channelId, onClose }: ChannelMembe
         {loading ? (
           <div className="px-4 py-8 text-center text-sm" style={{ color: "var(--text-muted)" }}>
             Loading...
+          </div>
+        ) : error ? (
+          <div className="px-4 py-8 text-center text-sm" style={{ color: "var(--danger)" }}>
+            {error}
           </div>
         ) : members.length === 0 ? (
           <div className="px-4 py-8 text-center text-sm" style={{ color: "var(--text-muted)" }}>
