@@ -1,0 +1,35 @@
+# Local development stack — backing services only.
+#
+# Runs ONLY the Nostr relay and Blossom file server, isolated from production
+# data, so you can run the Next.js app natively (`npm run dev`) against them.
+# The app, Caddy, and TLS are intentionally omitted — see docs/local-dev.md.
+#
+#   docker compose -f docker-compose.dev.yml up -d
+#   docker compose -f docker-compose.dev.yml down
+#
+services:
+  relay:
+    image: scsibug/nostr-rs-relay:latest
+    restart: unless-stopped
+    ports:
+      - "8080:8080"
+    volumes:
+      # Isolated dev data dir — never touches production ./data
+      - ./data/dev/relay:/data
+      - ./config/relay-config.toml:/usr/src/app/config.toml:ro
+
+  blossom:
+    build:
+      context: ./blossom-server
+    restart: unless-stopped
+    ports:
+      # Host 3100 -> container 3000. BLOSSOM_DOMAIN below must match the
+      # host-visible value so returned blob URLs resolve locally.
+      - "3100:3000"
+    volumes:
+      - ./data/dev/blossom:/app/data
+      - ./config/blossom-config.yml:/app/config.yml:ro
+    environment:
+      - BLOSSOM_DOMAIN=localhost:3100
+      - BLOSSOM_ADMIN_USER=admin
+      - BLOSSOM_ADMIN_PASS=devpass
