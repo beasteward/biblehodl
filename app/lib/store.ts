@@ -141,6 +141,7 @@ export const useAppStore = create<AppState>()(
       setLocked: (locked) => set({ locked }),
       logout: () =>
         set({
+          // Auth
           keys: null,
           signer: null,
           signerMode: null,
@@ -148,6 +149,17 @@ export const useAppStore = create<AppState>()(
           locked: false,
           isRegistered: false,
           memberProfile: null,
+          // Session-scoped data — clear so the next account never inherits the
+          // previous user's cached channels/messages/profiles.
+          currentView: "chat",
+          channels: [],
+          activeChannelId: null,
+          messages: {},
+          myChannelIds: new Set<string>(),
+          calendarEvents: [],
+          meetings: [],
+          activeMeetingId: null,
+          profiles: {},
         }),
       isRegistered: false,
       setIsRegistered: (isRegistered) => set({ isRegistered }),
@@ -249,14 +261,15 @@ export const useAppStore = create<AppState>()(
     {
       name: "nostr-teams-storage",
       partialize: (state) => ({
-        // Persist only public identity + encrypted key blob (never raw secrets).
+        // Persist ONLY auth identity + encrypted key blob (never raw secrets)
+        // plus benign UI nav state. Everything else — channels, messages,
+        // registration status, member profile — is derived fresh from the
+        // relay/server on each load so the UI always reflects live truth and
+        // never resurrects a stale instant-render cache after a data wipe.
         keys: state.keys,
         signerMode: state.signerMode,
         ncryptsec: state.ncryptsec,
         currentView: state.currentView,
-        channels: state.channels,
-        isRegistered: state.isRegistered,
-        memberProfile: state.memberProfile,
       }),
     }
   )

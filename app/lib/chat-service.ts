@@ -180,6 +180,11 @@ export async function initChat() {
   const relays = await pool.connectAll();
   const store = useAppStore.getState();
   store.setConnectedRelays(relays.map((r) => r.url));
+
+  // Channels are no longer persisted — hydrate fresh from the relay each session
+  // so the list reflects live relay truth (a wiped/relocated relay yields an
+  // empty list instead of resurrecting stale channels + lastMessage previews).
+  store.setChannels([]);
   subscribeToChannels();
 
   // Load user's channel memberships
