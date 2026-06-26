@@ -32,6 +32,10 @@ export interface DecryptedDM {
   recipient: string;
   content: string;
   created_at: number;
+  // Inner rumor kind (14 = message, 7 = reaction, 5 = deletion) + its tags, so
+  // callers can route encrypted reactions/retractions, not just plain messages.
+  kind: number;
+  tags: string[][];
 }
 
 interface Rumor {
@@ -43,12 +47,17 @@ interface Rumor {
   content: string;
 }
 
-function buildRumor(sender: string, recipient: string, content: string): Rumor {
+function buildRumor(
+  sender: string,
+  kind: number,
+  content: string,
+  tags: string[][]
+): Rumor {
   const rumor = {
     pubkey: sender,
-    kind: KIND_DM,
+    kind,
     created_at: Math.floor(Date.now() / 1000),
-    tags: [["p", recipient]],
+    tags,
     content,
   };
   return { ...rumor, id: getEventHash(rumor) };
@@ -94,7 +103,22 @@ export async function wrapDirectMessage(
   recipient: string,
   content: string
 ): Promise<{ id: string; toRecipient: VerifiedEvent; toSelf: VerifiedEvent }> {
-  const rumor = buildRumor(signer.pubkey, recipient, content);
+  return wrapRumorEvent(signer, recipient, KIND_DM, content, [["p", recipient]]);
+}
+
+/**
+ * Generic gift-wrap of an arbitrary inner event (rumor) to a peer + self copy.
+ * Used for encrypted DMs (kind 14), DM reactions (kind 7) and DM reaction
+ * retractions (kind 5) — all stay inside the NIP-59 wrap so no metadata leaks.
+ */
+export async function wrapRumorEvent(
+  signer: Signer,
+  recipient: string,
+  kind: number,
+  content: string,
+  tags: string[][]
+): Promise<{ id: string; toRecipient: VerifiedEvent; toSelf: VerifiedEvent }> {
+  const rumor = buildRumor(signer.pubkey, kind, content, tags);
   const toRecipient = giftWrap(await sealRumor(signer, recipient, rumor), recipient);
   const toSelf = giftWrap(await sealRumor(signer, signer.pubkey, rumor), signer.pubkey);
   return { id: rumor.id, toRecipient, toSelf };
@@ -122,5 +146,7 @@ export async function unwrapDirectMessage(
     recipient: rumor.tags.find((t) => t[0] === "p")?.[1] || signer.pubkey,
     content: rumor.content,
     created_at: rumor.created_at,
+    kind: rumor.kind,
+    tags: rumor.tags,
   };
 }

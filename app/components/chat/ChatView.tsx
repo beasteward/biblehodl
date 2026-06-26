@@ -11,7 +11,7 @@ import {
   retractReaction,
 } from "../../lib/chat-service";
 import type { ChatMessage } from "../../lib/store";
-import { sendDirectMessage } from "../../lib/dm-service";
+import { sendDirectMessage, sendDmReaction, retractDmReaction } from "../../lib/dm-service";
 import ChannelMembersPanel from "./ChannelMembersPanel";
 
 // Quick-reaction palette shown on message hover (Teams-style).
@@ -66,17 +66,23 @@ export default function ChatView() {
   }, [channelMessages, profiles]);
 
   // Toggle a reaction on a message: retract if I already reacted with this
-  // emoji, otherwise add it. Works on sent + received messages (you can react
-  // to your own). Disabled in DMs (a public kind-7 would leak that an
-  // encrypted message exists).
+  // emoji, otherwise add it. Works on sent + received messages, in channels and
+  // DMs. DM reactions go through the encrypted gift-wrap path so they never leak
+  // publicly; channel reactions are public NIP-25 (kind 7).
   const handleReact = async (msg: ChatMessage, emoji: string) => {
-    if (!signer || isDM) return;
+    if (!signer) return;
     const mine = (reactions[msg.id] || []).find(
       (r) => r.pubkey === keys?.publicKey && r.emoji === emoji
     );
     try {
-      if (mine) await retractReaction(mine.id, signer);
-      else await sendReaction({ id: msg.id, pubkey: msg.pubkey }, emoji, signer);
+      if (isDM) {
+        const partner = activeChannelId!.replace("dm-", "");
+        if (mine) await retractDmReaction(partner, mine.id, signer);
+        else await sendDmReaction(partner, msg.id, emoji, signer);
+      } else {
+        if (mine) await retractReaction(mine.id, signer);
+        else await sendReaction({ id: msg.id, pubkey: msg.pubkey }, emoji, signer);
+      }
     } catch (err) {
       console.error("Failed to react:", err);
     }
@@ -243,12 +249,11 @@ export default function ChatView() {
                     </div>
                   )}
                   <div className="relative">
-                    {/* Hover reaction picker — sent + received messages */}
-                    {!isDM && (
-                      <div
-                        className={`absolute -top-4 z-10 flex gap-0.5 px-1.5 py-0.5 rounded-full shadow-lg opacity-0 group-hover:opacity-100 transition-opacity ${isMe ? "right-1" : "left-1"}`}
-                        style={{ background: "var(--bg-secondary)", border: "1px solid var(--border)" }}
-                      >
+                    {/* Hover reaction picker — sent + received, channels + DMs */}
+                    <div
+                      className={`absolute -top-4 z-10 flex gap-0.5 px-1.5 py-0.5 rounded-full shadow-lg opacity-0 group-hover:opacity-100 transition-opacity ${isMe ? "right-1" : "left-1"}`}
+                      style={{ background: "var(--bg-secondary)", border: "1px solid var(--border)" }}
+                    >
                         {REACTION_EMOJIS.map((emoji) => (
                           <button
                             key={emoji}
@@ -259,8 +264,7 @@ export default function ChatView() {
                             {emoji}
                           </button>
                         ))}
-                      </div>
-                    )}
+                    </div>
                     <p
                       className="text-sm leading-relaxed rounded-2xl px-3 py-1.5 mt-0.5 inline-block break-words"
                       style={{
@@ -289,8 +293,7 @@ export default function ChatView() {
                             <button
                               key={emoji}
                               onClick={() => handleReact(msg, emoji)}
-                              disabled={isDM}
-                              className="flex items-center gap-1 px-1.5 py-0.5 rounded-full text-xs cursor-pointer transition-colors disabled:cursor-default"
+                              className="flex items-center gap-1 px-1.5 py-0.5 rounded-full text-xs cursor-pointer transition-colors"
                               style={{
                                 background: mine ? "var(--accent)" : "var(--bg-tertiary)",
                                 color: mine ? "white" : "var(--text-secondary)",
