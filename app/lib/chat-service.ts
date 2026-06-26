@@ -74,6 +74,9 @@ export function subscribeToChannels() {
           picture: meta.picture,
         };
         store.addChannel(channel);
+        // Start tracking unread for newly-discovered channels (boundary = now)
+        // so historical backlog isn't counted on first sight.
+        store.ensureChannelTracked(channel.id);
       } catch {
         // skip malformed
       }
@@ -113,6 +116,73 @@ export function subscribeToChannelMessages(channelId: string) {
 
 export function unsubscribeFromChannelMessages(channelId: string) {
   pool.unsubscribe(`channel-msgs-${channelId}`);
+}
+
+// ─── Global Unread Tracking ───
+//
+// ChatView only subscribes to the *active* channel's messages, so unread for
+// background channels needs a dedicated global subscription. Unread is gated by
+// each channel's persisted last-read timestamp rather than by EOSE: this both
+// ignores already-read history AND correctly counts messages that arrived while
+// you were away, and it stays consistent across reloads.
+
+// Per-session dedup of counted message ids (guards against multi-relay dupes).
+const countedUnread = new Map<string, Set<string>>();
+
+export function subscribeToChannelUnread(myPubkey: string) {
+  const store = useAppStore.getState();
+  countedUnread.clear();
+
+  // Ensure every known channel has a read boundary before we compute `since`.
+  for (const c of store.channels) store.ensureChannelTracked(c.id);
+
+  const nowSec = Math.floor(Date.now() / 1000);
+  const boundaries = Object.values(useAppStore.getState().lastReadAt);
+  // Catch up from the oldest read boundary so messages missed while away are
+  // counted; never look past "now".
+  const since = boundaries.length ? Math.min(...boundaries, nowSec) : nowSec;
+
+  pool.subscribe(
+    "channel-unread",
+    [{ kinds: [KIND_CHANNEL_MESSAGE], since }],
+    (event) => {
+      if (event.pubkey === myPubkey) return; // never count own messages
+
+      // NIP-28: root channel ref is the "e" tag marked "root" (or the bare one).
+      const rootTag = event.tags.find(
+        (t) => t[0] === "e" && (t[3] === "root" || t[3] === undefined || t[3] === "")
+      );
+      const channelId = rootTag?.[1];
+      if (!channelId) return;
+
+      const s = useAppStore.getState();
+      if (s.activeChannelId === channelId) return; // currently viewing → read
+
+      const boundary = s.lastReadAt[channelId];
+      if (boundary === undefined) {
+        // Unknown channel not yet hydrated — start tracking from now and treat
+        // this (historical) event as already read.
+        s.ensureChannelTracked(channelId, nowSec);
+        return;
+      }
+      if (event.created_at <= boundary) return; // already read
+
+      let seen = countedUnread.get(channelId);
+      if (!seen) {
+        seen = new Set();
+        countedUnread.set(channelId, seen);
+      }
+      if (seen.has(event.id)) return;
+      seen.add(event.id);
+
+      s.incrementUnread(channelId);
+    }
+  );
+}
+
+export function unsubscribeFromChannelUnread() {
+  pool.unsubscribe("channel-unread");
+  countedUnread.clear();
 }
 
 // ─── Profiles (kind 0) ───

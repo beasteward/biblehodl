@@ -23,17 +23,21 @@ export default function ChatView() {
   const [showMembers, setShowMembers] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
-  const clearUnread = useAppStore((s) => s.clearUnread);
+  const markChannelRead = useAppStore((s) => s.markChannelRead);
   const activeChannel = channels.find((c) => c.id === activeChannelId);
   const isDM = activeChannel?.isDirectMessage ?? false;
   const channelMessages = activeChannelId ? messages[activeChannelId] || [] : [];
 
-  // Clear unread when switching to a channel
+  // Mark the active channel read — on open and as new messages arrive while it
+  // stays open — advancing the persisted read boundary to the latest message so
+  // those messages don't resurface as unread after you leave or reload.
   useEffect(() => {
-    if (activeChannelId) {
-      clearUnread(activeChannelId);
-    }
-  }, [activeChannelId, clearUnread]);
+    if (!activeChannelId) return;
+    const latest = channelMessages.length
+      ? channelMessages[channelMessages.length - 1].created_at
+      : undefined;
+    markChannelRead(activeChannelId, latest);
+  }, [activeChannelId, channelMessages, markChannelRead]);
 
   // Subscribe to channel messages (not DMs — those are handled globally)
   useEffect(() => {

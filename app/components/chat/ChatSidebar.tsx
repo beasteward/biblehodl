@@ -23,6 +23,7 @@ function truncate(text: string, maxLen: number): string {
 
 export default function ChatSidebar() {
   const channels = useAppStore((s) => s.channels);
+  const unreadCounts = useAppStore((s) => s.unreadCounts);
   const activeChannelId = useAppStore((s) => s.activeChannelId);
   const setActiveChannelId = useAppStore((s) => s.setActiveChannelId);
   const addChannel = useAppStore((s) => s.addChannel);
@@ -229,7 +230,7 @@ export default function ChatSidebar() {
               Direct Messages
             </div>
             {dmChannels.filter((c) => filterMatch(getDMName(c))).map((channel) => {
-              const unread = channel.unreadCount || 0;
+              const unread = unreadCounts[channel.id] || 0;
               const lastMsg = channel.lastMessage;
               const isActive = activeChannelId === channel.id;
               return (
@@ -304,7 +305,9 @@ export default function ChatSidebar() {
             No channels yet
           </div>
         )}
-        {groupChannels.filter((c) => filterMatch(c.name)).map((channel) => (
+        {groupChannels.filter((c) => filterMatch(c.name)).map((channel) => {
+          const unread = unreadCounts[channel.id] || 0;
+          return (
           <button
             key={channel.id}
             onClick={() => setActiveChannelId(channel.id)}
@@ -314,15 +317,24 @@ export default function ChatSidebar() {
               borderLeft: activeChannelId === channel.id ? "3px solid var(--accent-light)" : "3px solid transparent",
             }}
           >
-            <div className="w-8 h-8 rounded-lg flex items-center justify-center text-sm shrink-0" style={{ background: "var(--bg-tertiary)" }}>
+            <div className="relative w-8 h-8 rounded-lg flex items-center justify-center text-sm shrink-0" style={{ background: "var(--bg-tertiary)" }}>
               #
+              {unread > 0 && (
+                <span
+                  className="absolute -top-1 -right-1 min-w-[18px] h-[18px] flex items-center justify-center rounded-full text-[10px] font-bold px-1"
+                  style={{ background: "var(--danger)", color: "white" }}
+                >
+                  {unread > 99 ? "99+" : unread}
+                </span>
+              )}
             </div>
-            <div className="min-w-0">
-              <div className="text-sm font-medium truncate" style={{ color: "var(--text-primary)" }}>{channel.name}</div>
+            <div className="min-w-0 flex-1">
+              <div className="text-sm truncate" style={{ color: "var(--text-primary)", fontWeight: unread > 0 ? 700 : 500 }}>{channel.name}</div>
               {channel.about && <div className="text-xs truncate" style={{ color: "var(--text-muted)" }}>{channel.about}</div>}
             </div>
           </button>
-        ))}
+          );
+        })}
       </div>
     </div>
   );

@@ -18,11 +18,11 @@ export default function ActivityBar() {
   const keys = useAppStore((s) => s.keys);
   const memberProfile = useAppStore((s) => s.memberProfile);
   const connectedRelays = useAppStore((s) => s.connectedRelays);
-  const channels = useAppStore((s) => s.channels);
+  const unreadCounts = useAppStore((s) => s.unreadCounts);
   const isAdmin = memberProfile?.role === "owner" || memberProfile?.role === "admin";
 
   // Total unread across all chat channels + DMs for the current user.
-  const unreadTotal = channels.reduce((sum, c) => sum + (c.unreadCount || 0), 0);
+  const unreadTotal = Object.values(unreadCounts).reduce((sum, n) => sum + n, 0);
   const visibleItems = navItems.filter((item) => !item.adminOnly || isAdmin);
 
   return (

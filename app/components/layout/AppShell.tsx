@@ -2,7 +2,7 @@
 
 import { useEffect } from "react";
 import { useAppStore, type View } from "../../lib/store";
-import { initChat, teardownChat } from "../../lib/chat-service";
+import { initChat, teardownChat, subscribeToChannelUnread } from "../../lib/chat-service";
 import { subscribeToDMs } from "../../lib/dm-service";
 import { subscribeToCalendarEvents } from "../../lib/calendar-service";
 import { initMeetings } from "../../lib/meeting-service";
@@ -37,6 +37,7 @@ export default function AppShell() {
     initChat().then(() => {
       if (keys?.publicKey && signer) {
         subscribeToDMs(signer);
+        subscribeToChannelUnread(keys.publicKey);
         subscribeToCalendarEvents([keys.publicKey]);
         initMeetings();
       }

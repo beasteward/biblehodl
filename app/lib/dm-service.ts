@@ -84,6 +84,8 @@ function handleIncomingDM(
       participants: [myPubkey, partnerPubkey],
     };
     store.addChannel(channel);
+    // Track unread from now so existing DM history isn't counted on first load.
+    store.ensureChannelTracked(conversationId);
     fetchProfile(partnerPubkey);
   }
 
@@ -101,7 +103,16 @@ function handleIncomingDM(
 
   store.addMessage(conversationId, msg);
 
-  if (!isDuplicate && senderPubkey !== myPubkey && store.activeChannelId !== conversationId) {
+  // Only count as unread if it's newer than our last-read boundary for this
+  // conversation — keeps counts stable across reloads (gift-wrap history replays
+  // on every connect) and matches "messages since you last looked".
+  const boundary = store.lastReadAt[conversationId] ?? 0;
+  if (
+    !isDuplicate &&
+    senderPubkey !== myPubkey &&
+    store.activeChannelId !== conversationId &&
+    created_at > boundary
+  ) {
     store.incrementUnread(conversationId);
   }
 

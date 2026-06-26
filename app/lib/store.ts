@@ -28,7 +28,6 @@ export interface Channel {
   isDirectMessage?: boolean;
   participants?: string[];
   lastMessage?: ChatMessage;
-  unreadCount?: number;
 }
 
 export interface CalendarEvent {
@@ -96,8 +95,17 @@ interface AppState {
   setActiveChannelId: (id: string | null) => void;
   messages: Record<string, ChatMessage[]>;
   addMessage: (channelId: string, message: ChatMessage) => void;
-  clearUnread: (channelId: string) => void;
+
+  // Unread tracking. `unreadCounts` is session-only and recomputed from relay
+  // history each load; `lastReadAt` (unix seconds per channel) is persisted so
+  // unread reflects "messages since you last opened the channel" and survives
+  // reloads instead of resetting or re-inflating from replayed history.
+  unreadCounts: Record<string, number>;
+  lastReadAt: Record<string, number>;
   incrementUnread: (channelId: string) => void;
+  clearUnread: (channelId: string) => void;
+  markChannelRead: (channelId: string, ts?: number) => void;
+  ensureChannelTracked: (channelId: string, ts?: number) => void;
 
   // Calendar
   calendarEvents: CalendarEvent[];
@@ -155,6 +163,8 @@ export const useAppStore = create<AppState>()(
           channels: [],
           activeChannelId: null,
           messages: {},
+          unreadCounts: {},
+          lastReadAt: {},
           myChannelIds: new Set<string>(),
           calendarEvents: [],
           meetings: [],
@@ -200,20 +210,41 @@ export const useAppStore = create<AppState>()(
             ),
           };
         }),
-      clearUnread: (channelId) =>
-        set((state) => ({
-          channels: state.channels.map((c) =>
-            c.id === channelId ? { ...c, unreadCount: 0 } : c
-          ),
-        })),
+      // ── Unread tracking ──
+      unreadCounts: {},
+      lastReadAt: {},
       incrementUnread: (channelId) =>
         set((state) => ({
-          channels: state.channels.map((c) =>
-            c.id === channelId
-              ? { ...c, unreadCount: (c.unreadCount || 0) + 1 }
-              : c
-          ),
+          unreadCounts: {
+            ...state.unreadCounts,
+            [channelId]: (state.unreadCounts[channelId] || 0) + 1,
+          },
         })),
+      clearUnread: (channelId) =>
+        set((state) => ({
+          unreadCounts: { ...state.unreadCounts, [channelId]: 0 },
+        })),
+      // Mark a channel read up to `ts` (defaults to now): advances the persisted
+      // read boundary and zeroes the live unread count.
+      markChannelRead: (channelId, ts) =>
+        set((state) => {
+          const now = Math.floor(Date.now() / 1000);
+          const boundary = Math.max(state.lastReadAt[channelId] || 0, ts ?? now);
+          return {
+            lastReadAt: { ...state.lastReadAt, [channelId]: boundary },
+            unreadCounts: { ...state.unreadCounts, [channelId]: 0 },
+          };
+        }),
+      // Initialize a read boundary for a newly-discovered channel (defaults to
+      // now) so first-ever load never counts the entire backlog as unread.
+      ensureChannelTracked: (channelId, ts) =>
+        set((state) => {
+          if (state.lastReadAt[channelId] !== undefined) return state;
+          const now = Math.floor(Date.now() / 1000);
+          return {
+            lastReadAt: { ...state.lastReadAt, [channelId]: ts ?? now },
+          };
+        }),
 
       // Calendar
       calendarEvents: [],
@@ -270,6 +301,9 @@ export const useAppStore = create<AppState>()(
         signerMode: state.signerMode,
         ncryptsec: state.ncryptsec,
         currentView: state.currentView,
+        // Persisted read state so unread badges reflect "since you last looked"
+        // across reloads. Safe to persist (just timestamps keyed by channel id).
+        lastReadAt: state.lastReadAt,
       }),
     }
   )
