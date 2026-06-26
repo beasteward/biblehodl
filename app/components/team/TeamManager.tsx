@@ -3,6 +3,7 @@
 import { useState, useEffect, useCallback } from "react";
 import { useAppStore } from "../../lib/store";
 import MemberSearch, { type MemberResult } from "../common/MemberSearch";
+import ConfirmModal from "../common/ConfirmModal";
 import {
   fetchTeams,
   fetchTeam,
@@ -92,6 +93,8 @@ function TeamDetailView({ teamId, onBack }: { teamId: string; onBack: () => void
   const [newPubkey, setNewPubkey] = useState("");
   const [newRole, setNewRole] = useState("member");
   const [adding, setAdding] = useState(false);
+  const [removeTarget, setRemoveTarget] = useState<{ pubkey: string; name: string } | null>(null);
+  const [removing, setRemoving] = useState(false);
 
   const load = useCallback(async () => {
     if (!keys || !signer) return;
@@ -134,14 +137,17 @@ function TeamDetailView({ teamId, onBack }: { teamId: string; onBack: () => void
     setAdding(false);
   };
 
-  const handleRemoveMember = async (pubkey: string) => {
-    if (!keys || !signer || !confirm("Remove this member?")) return;
+  const handleRemoveMember = async () => {
+    if (!keys || !signer || !removeTarget) return;
+    setRemoving(true);
     try {
-      await removeMember(teamId, pubkey, signer);
+      await removeMember(teamId, removeTarget.pubkey, signer);
+      setRemoveTarget(null);
       load();
     } catch (err) {
       alert(err instanceof Error ? err.message : "Failed to remove member");
     }
+    setRemoving(false);
   };
 
   const getDisplayName = (pubkey: string) => {
@@ -190,7 +196,7 @@ function TeamDetailView({ teamId, onBack }: { teamId: string; onBack: () => void
                   </span>
                 </div>
                 {isAdmin && m.role !== "owner" && m.pubkey !== keys?.publicKey && (
-                  <button onClick={() => handleRemoveMember(m.pubkey)}
+                  <button onClick={() => setRemoveTarget({ pubkey: m.pubkey, name: getDisplayName(m.pubkey) })}
                     className="text-xs px-2 py-1 rounded" style={{ color: "var(--danger)" }}>
                     Remove
                   </button>
@@ -243,6 +249,17 @@ function TeamDetailView({ teamId, onBack }: { teamId: string; onBack: () => void
           )}
         </div>
       </div>
+
+      <ConfirmModal
+        open={!!removeTarget}
+        title="Remove member"
+        message={removeTarget ? `Remove ${removeTarget.name} from this team? They keep their account but lose access to this team.` : undefined}
+        confirmLabel="Remove"
+        danger
+        busy={removing}
+        onConfirm={handleRemoveMember}
+        onClose={() => setRemoveTarget(null)}
+      />
     </div>
   );
 }
