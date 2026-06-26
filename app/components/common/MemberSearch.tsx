@@ -17,12 +17,19 @@ interface MemberSearchProps {
   onSelect: (member: MemberResult) => void;
   placeholder?: string;
   excludePubkeys?: string[];
+  // "team" (default) searches the caller's team; "directory" searches all
+  // registered users across teams (used when adding people to a team).
+  scope?: "team" | "directory";
+  // When scope="directory", omit users already in this team.
+  excludeTeamId?: string;
 }
 
 export default function MemberSearch({
   onSelect,
   placeholder = "Search members by name...",
   excludePubkeys = [],
+  scope = "team",
+  excludeTeamId,
 }: MemberSearchProps) {
   const keys = useAppStore((s) => s.keys);
   const signer = useAppStore((s) => s.signer);
@@ -46,7 +53,12 @@ export default function MemberSearch({
       if (!keys || !signer) return;
       setLoading(true);
       try {
-        const res = await authFetch(signer, `/api/members/search?q=${encodeURIComponent(query.trim())}`);
+        const params = new URLSearchParams({ q: query.trim() });
+        if (scope === "directory") {
+          params.set("scope", "directory");
+          if (excludeTeamId) params.set("excludeTeamId", excludeTeamId);
+        }
+        const res = await authFetch(signer, `/api/members/search?${params.toString()}`);
         const data = await res.json();
         const filtered = (data.members || []).filter(
           (m: MemberResult) => !excludePubkeys.includes(m.pubkey)
@@ -63,7 +75,7 @@ export default function MemberSearch({
     return () => {
       if (debounceRef.current) clearTimeout(debounceRef.current);
     };
-  }, [query, keys, excludePubkeys]);
+  }, [query, keys, excludePubkeys, scope, excludeTeamId]);
 
   // Close on outside click
   useEffect(() => {

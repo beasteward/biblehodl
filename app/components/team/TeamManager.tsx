@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useCallback } from "react";
 import { useAppStore } from "../../lib/store";
+import MemberSearch, { type MemberResult } from "../common/MemberSearch";
 import {
   fetchTeams,
   fetchTeam,
@@ -178,6 +179,18 @@ function TeamDetailView({ teamId, onBack }: { teamId: string; onBack: () => void
     setAdding(false);
   };
 
+  const handleAddFromSearch = async (member: MemberResult) => {
+    if (!keys || !signer) return;
+    setAdding(true);
+    try {
+      await addMember(teamId, member.pubkey, newRole, signer);
+      load();
+    } catch (err) {
+      alert(err instanceof Error ? err.message : "Failed to add member");
+    }
+    setAdding(false);
+  };
+
   const handleRemoveMember = async (pubkey: string) => {
     if (!keys || !signer || !confirm("Remove this member?")) return;
     try {
@@ -258,22 +271,39 @@ function TeamDetailView({ teamId, onBack }: { teamId: string; onBack: () => void
 
           {/* Add member */}
           {isAdmin && (
-            <div className="mt-3 flex gap-2">
-              <input type="text" value={newPubkey} onChange={(e) => setNewPubkey(e.target.value)}
-                placeholder="Paste npub or hex pubkey"
-                className="flex-1 px-3 py-2 rounded text-sm outline-none"
-                style={{ background: "var(--bg-tertiary)", color: "var(--text-primary)", border: "1px solid var(--border)" }} />
-              <select value={newRole} onChange={(e) => setNewRole(e.target.value)}
-                className="px-2 py-2 rounded text-sm outline-none"
-                style={{ background: "var(--bg-tertiary)", color: "var(--text-primary)", border: "1px solid var(--border)" }}>
-                <option value="member">Member</option>
-                <option value="admin">Admin</option>
-              </select>
-              <button onClick={handleAddMember} disabled={!newPubkey.trim() || adding}
-                className="px-3 py-2 rounded text-sm font-medium disabled:opacity-50"
-                style={{ background: "var(--accent)", color: "white" }}>
-                {adding ? "..." : "Add"}
-              </button>
+            <div className="mt-3 space-y-2">
+              {/* Role applies to whichever method is used below */}
+              <div className="flex items-center gap-2">
+                <span className="text-xs" style={{ color: "var(--text-muted)" }}>Add as</span>
+                <select value={newRole} onChange={(e) => setNewRole(e.target.value)}
+                  className="px-2 py-1.5 rounded text-sm outline-none"
+                  style={{ background: "var(--bg-tertiary)", color: "var(--text-primary)", border: "1px solid var(--border)" }}>
+                  <option value="member">Member</option>
+                  <option value="admin">Admin</option>
+                </select>
+              </div>
+
+              {/* Search the directory by name */}
+              <MemberSearch
+                scope="directory"
+                excludeTeamId={teamId}
+                excludePubkeys={team.members.map((m) => m.pubkey)}
+                placeholder="Search people by name or email..."
+                onSelect={handleAddFromSearch}
+              />
+
+              {/* Or add directly by npub / hex pubkey */}
+              <div className="flex gap-2">
+                <input type="text" value={newPubkey} onChange={(e) => setNewPubkey(e.target.value)}
+                  placeholder="…or paste an npub / hex pubkey"
+                  className="flex-1 px-3 py-2 rounded text-sm outline-none"
+                  style={{ background: "var(--bg-tertiary)", color: "var(--text-primary)", border: "1px solid var(--border)" }} />
+                <button onClick={handleAddMember} disabled={!newPubkey.trim() || adding}
+                  className="px-3 py-2 rounded text-sm font-medium disabled:opacity-50"
+                  style={{ background: "var(--accent)", color: "white" }}>
+                  {adding ? "..." : "Add"}
+                </button>
+              </div>
             </div>
           )}
         </div>
