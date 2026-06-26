@@ -3,7 +3,7 @@ import { persist } from "zustand/middleware";
 import type { Identity } from "./nostr";
 import type { Signer, SignerType } from "./signer";
 
-export type View = "chat" | "calendar" | "meetings" | "files" | "games" | "team" | "admin";
+export type View = "chat" | "activity" | "calendar" | "meetings" | "files" | "games" | "team" | "admin";
 
 export interface MemberProfile {
   firstName: string;
@@ -18,6 +18,27 @@ export interface ChatMessage {
   content: string;
   created_at: number;
   channelId?: string;
+}
+
+// NIP-25 reaction (kind 7) targeting a chat message.
+export interface Reaction {
+  id: string; // reaction event id (kind 7)
+  targetId: string; // id of the message being reacted to
+  pubkey: string; // reactor
+  emoji: string; // reaction content ("+" normalized to 👍)
+  created_at: number;
+}
+
+// A Teams-style Activity feed entry — currently "someone reacted to your message".
+export interface ActivityItem {
+  id: string; // reaction event id (stable, dedup key)
+  type: "reaction";
+  actorPubkey: string; // who reacted
+  emoji: string;
+  targetId: string; // your message they reacted to
+  targetSnippet?: string; // preview of your message, if known
+  channelId?: string; // channel/DM the message lives in, if known
+  created_at: number;
 }
 
 export interface Channel {
@@ -96,6 +117,17 @@ interface AppState {
   messages: Record<string, ChatMessage[]>;
   addMessage: (channelId: string, message: ChatMessage) => void;
 
+  // Reactions, keyed by the target message id.
+  reactions: Record<string, Reaction[]>;
+  addReaction: (reaction: Reaction) => void;
+  removeReaction: (reactionId: string, byPubkey: string) => void;
+
+  // Teams-style Activity feed (newest first) + persisted read boundary.
+  activity: ActivityItem[];
+  addActivity: (item: ActivityItem) => void;
+  activityLastReadAt: number;
+  markActivityRead: () => void;
+
   // Unread tracking. `unreadCounts` is session-only and recomputed from relay
   // history each load; `lastReadAt` (unix seconds per channel) is persisted so
   // unread reflects "messages since you last opened the channel" and survives
@@ -163,6 +195,9 @@ export const useAppStore = create<AppState>()(
           channels: [],
           activeChannelId: null,
           messages: {},
+          reactions: {},
+          activity: [],
+          activityLastReadAt: 0,
           unreadCounts: {},
           lastReadAt: {},
           myChannelIds: new Set<string>(),
@@ -191,6 +226,55 @@ export const useAppStore = create<AppState>()(
         })),
       activeChannelId: null,
       setActiveChannelId: (activeChannelId) => set({ activeChannelId }),
+      // ── Reactions ──
+      reactions: {},
+      addReaction: (reaction) =>
+        set((state) => {
+          const existing = state.reactions[reaction.targetId] || [];
+          // Dedup by reaction event id; also collapse a repeat of the same
+          // (pubkey, emoji) so a double-tap never double-counts.
+          if (
+            existing.some(
+              (r) =>
+                r.id === reaction.id ||
+                (r.pubkey === reaction.pubkey && r.emoji === reaction.emoji)
+            )
+          ) {
+            return state;
+          }
+          return {
+            reactions: {
+              ...state.reactions,
+              [reaction.targetId]: [...existing, reaction],
+            },
+          };
+        }),
+      removeReaction: (reactionId, byPubkey) =>
+        set((state) => {
+          const next: Record<string, Reaction[]> = {};
+          for (const [targetId, list] of Object.entries(state.reactions)) {
+            // Only the original reactor may retract their reaction.
+            next[targetId] = list.filter(
+              (r) => !(r.id === reactionId && r.pubkey === byPubkey)
+            );
+          }
+          return { reactions: next };
+        }),
+
+      // ── Activity feed ──
+      activity: [],
+      addActivity: (item) =>
+        set((state) => {
+          if (state.activity.some((a) => a.id === item.id)) return state;
+          return {
+            activity: [item, ...state.activity].sort(
+              (a, b) => b.created_at - a.created_at
+            ),
+          };
+        }),
+      activityLastReadAt: 0,
+      markActivityRead: () =>
+        set({ activityLastReadAt: Math.floor(Date.now() / 1000) }),
       messages: {},
       addMessage: (channelId, message) =>
         set((state) => {
@@ -301,6 +385,8 @@ export const useAppStore = create<AppState>()(
         signerMode: state.signerMode,
         ncryptsec: state.ncryptsec,
         currentView: state.currentView,
+        // Persisted so the Activity badge reflects "since you last looked".
+        activityLastReadAt: state.activityLastReadAt,
         // Persisted read state so unread badges reflect "since you last looked"
         // across reloads. Safe to persist (just timestamps keyed by channel id).
         lastReadAt: state.lastReadAt,

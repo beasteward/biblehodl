@@ -22,6 +22,12 @@ export const KIND_CHANNEL_MESSAGE = 42;
 export const KIND_CHANNEL_MUTE = 43;
 export const KIND_CHANNEL_MUTE_USER = 44;
 
+// NIP-25 Reactions
+export const KIND_REACTION = 7;
+
+// NIP-09 Event Deletion (used to retract reactions)
+export const KIND_DELETE = 5;
+
 // NIP-17 Private Direct Messages (NIP-59 gift wrap)
 export const KIND_DM = 14;
 export const KIND_DM_SEAL = 13;

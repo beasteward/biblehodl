@@ -7,15 +7,22 @@ import {
   subscribeToChannelMessages,
   unsubscribeFromChannelMessages,
   fetchProfile,
+  sendReaction,
+  retractReaction,
 } from "../../lib/chat-service";
+import type { ChatMessage } from "../../lib/store";
 import { sendDirectMessage } from "../../lib/dm-service";
 import ChannelMembersPanel from "./ChannelMembersPanel";
+
+// Quick-reaction palette shown on message hover (Teams-style).
+const REACTION_EMOJIS = ["\u{1F44D}", "\u2764\uFE0F", "\u{1F602}", "\u{1F389}", "\u{1F62E}", "\u{1F622}", "\u{1F64F}"];
 
 export default function ChatView() {
   const activeChannelId = useAppStore((s) => s.activeChannelId);
   const channels = useAppStore((s) => s.channels);
   const messages = useAppStore((s) => s.messages);
   const profiles = useAppStore((s) => s.profiles);
+  const reactions = useAppStore((s) => s.reactions);
   const keys = useAppStore((s) => s.keys);
   const signer = useAppStore((s) => s.signer);
   const [input, setInput] = useState("");
@@ -57,6 +64,22 @@ export default function ChatView() {
     }
     unknowns.forEach((pk) => fetchProfile(pk));
   }, [channelMessages, profiles]);
+
+  // Toggle a reaction on a message: retract if I already reacted with this
+  // emoji, otherwise add it. Disabled in DMs (a public kind-7 would leak that
+  // an encrypted message exists).
+  const handleReact = async (msg: ChatMessage, emoji: string) => {
+    if (!signer || isDM) return;
+    const mine = (reactions[msg.id] || []).find(
+      (r) => r.pubkey === keys?.publicKey && r.emoji === emoji
+    );
+    try {
+      if (mine) await retractReaction(mine.id, signer);
+      else await sendReaction({ id: msg.id, pubkey: msg.pubkey }, emoji, signer);
+    } catch (err) {
+      console.error("Failed to react:", err);
+    }
+  };
 
   const handleSend = async () => {
     if (!input.trim() || !activeChannelId || !keys || !signer) return;
@@ -218,15 +241,70 @@ export default function ChatView() {
                       <span className="text-xs" style={{ color: "var(--text-muted)" }}>{time}</span>
                     </div>
                   )}
-                  <p
-                    className="text-sm leading-relaxed rounded-2xl px-3 py-1.5 mt-0.5 inline-block break-words"
-                    style={{
-                      background: isMe ? "var(--accent)" : "var(--bg-tertiary)",
-                      color: isMe ? "white" : "var(--text-primary)",
-                    }}
-                  >
-                    {msg.content}
-                  </p>
+                  <div className="relative">
+                    {/* Hover reaction picker — received messages only */}
+                    {!isMe && !isDM && (
+                      <div
+                        className="absolute -top-4 left-1 z-10 flex gap-0.5 px-1.5 py-0.5 rounded-full shadow-lg opacity-0 group-hover:opacity-100 transition-opacity"
+                        style={{ background: "var(--bg-secondary)", border: "1px solid var(--border)" }}
+                      >
+                        {REACTION_EMOJIS.map((emoji) => (
+                          <button
+                            key={emoji}
+                            onClick={() => handleReact(msg, emoji)}
+                            className="text-sm leading-none px-1 py-0.5 rounded-full hover:scale-125 transition-transform cursor-pointer"
+                            title={`React ${emoji}`}
+                          >
+                            {emoji}
+                          </button>
+                        ))}
+                      </div>
+                    )}
+                    <p
+                      className="text-sm leading-relaxed rounded-2xl px-3 py-1.5 mt-0.5 inline-block break-words"
+                      style={{
+                        background: isMe ? "var(--accent)" : "var(--bg-tertiary)",
+                        color: isMe ? "white" : "var(--text-primary)",
+                      }}
+                    >
+                      {msg.content}
+                    </p>
+                  </div>
+                  {/* Reaction pills — grouped by emoji with counts */}
+                  {(() => {
+                    const list = reactions[msg.id] || [];
+                    if (list.length === 0) return null;
+                    const groups = new Map<string, typeof list>();
+                    for (const r of list) {
+                      const g = groups.get(r.emoji) || [];
+                      g.push(r);
+                      groups.set(r.emoji, g);
+                    }
+                    return (
+                      <div className={`flex flex-wrap gap-1 mt-1 ${isMe ? "justify-end" : "justify-start"}`}>
+                        {Array.from(groups.entries()).map(([emoji, rs]) => {
+                          const mine = rs.some((r) => r.pubkey === keys?.publicKey);
+                          return (
+                            <button
+                              key={emoji}
+                              onClick={() => handleReact(msg, emoji)}
+                              disabled={isDM}
+                              className="flex items-center gap-1 px-1.5 py-0.5 rounded-full text-xs cursor-pointer transition-colors disabled:cursor-default"
+                              style={{
+                                background: mine ? "var(--accent)" : "var(--bg-tertiary)",
+                                color: mine ? "white" : "var(--text-secondary)",
+                                border: `1px solid ${mine ? "var(--accent-light)" : "var(--border)"}`,
+                              }}
+                              title={mine ? "Remove your reaction" : "React"}
+                            >
+                              <span>{emoji}</span>
+                              <span>{rs.length}</span>
+                            </button>
+                          );
+                        })}
+                      </div>
+                    );
+                  })()}
                 </div>
                 {!showHeader && (
                   <span className="text-xs opacity-0 group-hover:opacity-100 shrink-0 self-center" style={{ color: "var(--text-muted)" }}>{time}</span>

@@ -4,6 +4,7 @@ import { useAppStore, type View } from "../../lib/store";
 
 const navItems: { view: View; icon: string; label: string; adminOnly?: boolean }[] = [
   { view: "chat", icon: "💬", label: "Chat" },
+  { view: "activity", icon: "🔔", label: "Activity" },
   { view: "calendar", icon: "📅", label: "Calendar" },
   { view: "meetings", icon: "👥", label: "Meetings" },
   { view: "files", icon: "📁", label: "Files" },
@@ -19,10 +20,14 @@ export default function ActivityBar() {
   const memberProfile = useAppStore((s) => s.memberProfile);
   const connectedRelays = useAppStore((s) => s.connectedRelays);
   const unreadCounts = useAppStore((s) => s.unreadCounts);
+  const activity = useAppStore((s) => s.activity);
+  const activityLastReadAt = useAppStore((s) => s.activityLastReadAt);
   const isAdmin = memberProfile?.role === "owner" || memberProfile?.role === "admin";
 
   // Total unread across all chat channels + DMs for the current user.
   const unreadTotal = Object.values(unreadCounts).reduce((sum, n) => sum + n, 0);
+  // Unread Activity = items newer than the last time the feed was opened.
+  const activityUnread = activity.filter((a) => a.created_at > activityLastReadAt).length;
   const visibleItems = navItems.filter((item) => !item.adminOnly || isAdmin);
 
   return (
@@ -53,6 +58,14 @@ export default function ActivityBar() {
               style={{ background: "var(--danger)", color: "white" }}
             >
               {unreadTotal > 99 ? "99+" : unreadTotal}
+            </span>
+          )}
+          {item.view === "activity" && activityUnread > 0 && (
+            <span
+              className="absolute -top-1 -right-1 min-w-[18px] h-[18px] flex items-center justify-center rounded-full text-[10px] font-bold px-1"
+              style={{ background: "var(--danger)", color: "white" }}
+            >
+              {activityUnread > 99 ? "99+" : activityUnread}
             </span>
           )}
           {currentView === item.view && (

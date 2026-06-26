@@ -2,13 +2,20 @@
 
 import { useEffect } from "react";
 import { useAppStore, type View } from "../../lib/store";
-import { initChat, teardownChat, subscribeToChannelUnread } from "../../lib/chat-service";
+import {
+  initChat,
+  teardownChat,
+  subscribeToChannelUnread,
+  subscribeToReactions,
+  unsubscribeFromReactions,
+} from "../../lib/chat-service";
 import { subscribeToDMs } from "../../lib/dm-service";
 import { subscribeToCalendarEvents } from "../../lib/calendar-service";
 import { initMeetings } from "../../lib/meeting-service";
 import ActivityBar from "./ActivityBar";
 import Sidebar from "./Sidebar";
 import ChatView from "../chat/ChatView";
+import ActivityView from "../activity/ActivityView";
 import CalendarView from "../calendar/CalendarView";
 import MeetingsView from "../meetings/MeetingsView";
 import FilesView from "../files/FilesView";
@@ -18,6 +25,7 @@ import AdminPanel from "../admin/AdminPanel";
 
 const views: Record<View, React.ComponentType> = {
   chat: ChatView,
+  activity: ActivityView,
   calendar: CalendarView,
   meetings: MeetingsView,
   files: FilesView,
@@ -38,11 +46,15 @@ export default function AppShell() {
       if (keys?.publicKey && signer) {
         subscribeToDMs(signer);
         subscribeToChannelUnread(keys.publicKey);
+        subscribeToReactions(keys.publicKey);
         subscribeToCalendarEvents([keys.publicKey]);
         initMeetings();
       }
     });
-    return () => teardownChat();
+    return () => {
+      unsubscribeFromReactions();
+      teardownChat();
+    };
   }, [keys, signer]);
 
   return (
