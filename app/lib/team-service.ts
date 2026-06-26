@@ -17,7 +17,6 @@ export interface Team {
 export interface TeamDetail extends Team {
   myRole: string;
   members: { id: string; pubkey: string; role: string; joinedAt: string }[];
-  invites: { id: string; code: string; createdBy: string; usedBy: string | null; expiresAt: string; createdAt: string }[];
 }
 
 const JSON_HEADERS = { "Content-Type": "application/json" };
@@ -80,28 +79,3 @@ export async function removeMember(teamId: string, memberPubkey: string, signer:
   }
 }
 
-export async function createInvite(teamId: string, signer: Signer, expiresInHours = 48) {
-  const res = await authFetch(signer, `/api/teams/${teamId}/invites`, {
-    method: "POST",
-    headers: JSON_HEADERS,
-    body: JSON.stringify({ expiresInHours }),
-  });
-  if (!res.ok) {
-    const err = await res.json();
-    throw new Error(err.error || "Failed to create invite");
-  }
-  return res.json();
-}
-
-export async function joinTeam(code: string, signer: Signer) {
-  const res = await authFetch(signer, "/api/teams/join", {
-    method: "POST",
-    headers: JSON_HEADERS,
-    body: JSON.stringify({ code }),
-  });
-  if (!res.ok) {
-    const err = await res.json();
-    throw new Error(err.error || "Failed to join team");
-  }
-  return res.json();
-}

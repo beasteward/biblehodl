@@ -7,10 +7,8 @@ import {
   fetchTeams,
   fetchTeam,
   createTeam,
-  createInvite,
   addMember,
   removeMember,
-  joinTeam,
   type Team,
   type TeamDetail,
 } from "../../lib/team-service";
@@ -83,59 +81,6 @@ function CreateTeamModal({ onClose, onCreated }: { onClose: () => void; onCreate
   );
 }
 
-// ─── Join Team Modal ───
-
-function JoinTeamModal({ onClose, onJoined }: { onClose: () => void; onJoined: () => void }) {
-  const keys = useAppStore((s) => s.keys);
-  const signer = useAppStore((s) => s.signer);
-  const [code, setCode] = useState("");
-  const [joining, setJoining] = useState(false);
-  const [error, setError] = useState("");
-
-  const handleJoin = async () => {
-    if (!keys || !signer || !code.trim()) return;
-    setJoining(true);
-    setError("");
-    try {
-      await joinTeam(code.trim(), signer);
-      onJoined();
-      onClose();
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to join");
-    } finally {
-      setJoining(false);
-    }
-  };
-
-  return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50" onClick={onClose}>
-      <div
-        className="rounded-lg p-6 w-full max-w-md shadow-xl"
-        style={{ background: "var(--bg-secondary)", color: "var(--text-primary)" }}
-        onClick={(e) => e.stopPropagation()}
-      >
-        <h2 className="text-lg font-semibold mb-4">Join a Team</h2>
-        <div>
-          <label className="block text-sm mb-1" style={{ color: "var(--text-muted)" }}>Invite Code</label>
-          <input type="text" value={code} onChange={(e) => setCode(e.target.value.toUpperCase())} placeholder="Enter invite code"
-            className="w-full px-3 py-2 rounded text-sm outline-none font-mono text-center text-lg tracking-widest"
-            style={{ background: "var(--bg-tertiary)", color: "var(--text-primary)", border: "1px solid var(--border)" }}
-            autoFocus maxLength={8} />
-        </div>
-        {error && <div className="text-sm mt-3" style={{ color: "var(--danger)" }}>{error}</div>}
-        <div className="flex justify-end gap-2 mt-4">
-          <button onClick={onClose} className="px-4 py-2 rounded text-sm" style={{ color: "var(--text-muted)" }}>Cancel</button>
-          <button onClick={handleJoin} disabled={!code.trim() || joining}
-            className="px-4 py-2 rounded text-sm font-medium disabled:opacity-50"
-            style={{ background: "var(--accent)", color: "white" }}>
-            {joining ? "Joining..." : "Join Team"}
-          </button>
-        </div>
-      </div>
-    </div>
-  );
-}
-
 // ─── Team Detail View ───
 
 function TeamDetailView({ teamId, onBack }: { teamId: string; onBack: () => void }) {
@@ -147,8 +92,6 @@ function TeamDetailView({ teamId, onBack }: { teamId: string; onBack: () => void
   const [newPubkey, setNewPubkey] = useState("");
   const [newRole, setNewRole] = useState("member");
   const [adding, setAdding] = useState(false);
-  const [inviteCode, setInviteCode] = useState<string | null>(null);
-  const [creatingInvite, setCreatingInvite] = useState(false);
 
   const load = useCallback(async () => {
     if (!keys || !signer) return;
@@ -199,19 +142,6 @@ function TeamDetailView({ teamId, onBack }: { teamId: string; onBack: () => void
     } catch (err) {
       alert(err instanceof Error ? err.message : "Failed to remove member");
     }
-  };
-
-  const handleCreateInvite = async () => {
-    if (!keys || !signer) return;
-    setCreatingInvite(true);
-    try {
-      const invite = await createInvite(teamId, signer);
-      setInviteCode(invite.code);
-      load();
-    } catch (err) {
-      alert(err instanceof Error ? err.message : "Failed to create invite");
-    }
-    setCreatingInvite(false);
   };
 
   const getDisplayName = (pubkey: string) => {
@@ -271,17 +201,22 @@ function TeamDetailView({ teamId, onBack }: { teamId: string; onBack: () => void
 
           {/* Add member */}
           {isAdmin && (
-            <div className="mt-3 space-y-2">
-              {/* Role applies to whichever method is used below */}
-              <div className="flex items-center gap-2">
-                <span className="text-xs" style={{ color: "var(--text-muted)" }}>Add as</span>
-                <select value={newRole} onChange={(e) => setNewRole(e.target.value)}
-                  className="px-2 py-1.5 rounded text-sm outline-none"
-                  style={{ background: "var(--bg-tertiary)", color: "var(--text-primary)", border: "1px solid var(--border)" }}>
-                  <option value="member">Member</option>
-                  <option value="admin">Admin</option>
-                </select>
+            <div className="mt-5 pt-4 space-y-2 border-t" style={{ borderColor: "var(--border)" }}>
+              <div className="flex items-center justify-between">
+                <h4 className="text-sm font-semibold" style={{ color: "var(--text-primary)" }}>Add Member</h4>
+                <div className="flex items-center gap-2">
+                  <span className="text-xs" style={{ color: "var(--text-muted)" }}>Add as</span>
+                  <select value={newRole} onChange={(e) => setNewRole(e.target.value)}
+                    className="px-2 py-1.5 rounded text-sm outline-none"
+                    style={{ background: "var(--bg-tertiary)", color: "var(--text-primary)", border: "1px solid var(--border)" }}>
+                    <option value="member">Member</option>
+                    <option value="admin">Admin</option>
+                  </select>
+                </div>
               </div>
+              <p className="text-xs" style={{ color: "var(--text-muted)" }}>
+                Add an existing member of this community. New people join the app via an invite code.
+              </p>
 
               {/* Search the directory by name */}
               <MemberSearch
@@ -307,45 +242,6 @@ function TeamDetailView({ teamId, onBack }: { teamId: string; onBack: () => void
             </div>
           )}
         </div>
-
-        {/* Invites */}
-        {isAdmin && (
-          <div>
-            <div className="flex items-center justify-between mb-3">
-              <h3 className="text-sm font-semibold" style={{ color: "var(--text-primary)" }}>Invite Codes</h3>
-              <button onClick={handleCreateInvite} disabled={creatingInvite}
-                className="text-sm px-3 py-1 rounded disabled:opacity-50"
-                style={{ background: "var(--bg-tertiary)", color: "var(--accent)" }}>
-                {creatingInvite ? "..." : "+ Generate Code"}
-              </button>
-            </div>
-
-            {inviteCode && (
-              <div className="p-4 rounded-lg mb-3 text-center"
-                style={{ background: "var(--accent)" + "15", border: "1px solid var(--accent)" }}>
-                <p className="text-xs mb-1" style={{ color: "var(--text-muted)" }}>New invite code (share with the new member):</p>
-                <p className="text-2xl font-mono font-bold tracking-widest" style={{ color: "var(--accent)" }}>{inviteCode}</p>
-                <p className="text-xs mt-1" style={{ color: "var(--text-muted)" }}>Expires in 48 hours · Single use</p>
-              </div>
-            )}
-
-            {team.invites && team.invites.length > 0 && (
-              <div className="space-y-2">
-                {team.invites.map((inv) => (
-                  <div key={inv.id} className="flex items-center justify-between p-2 rounded text-sm"
-                    style={{ background: "var(--bg-secondary)", border: "1px solid var(--border)" }}>
-                    <span className="font-mono font-bold" style={{ color: inv.usedBy ? "var(--text-muted)" : "var(--accent)" }}>
-                      {inv.code}
-                    </span>
-                    <span className="text-xs" style={{ color: "var(--text-muted)" }}>
-                      {inv.usedBy ? "Used" : `Expires ${new Date(inv.expiresAt).toLocaleDateString()}`}
-                    </span>
-                  </div>
-                ))}
-              </div>
-            )}
-          </div>
-        )}
       </div>
     </div>
   );
@@ -359,7 +255,6 @@ export default function TeamManager() {
   const [teams, setTeams] = useState<Team[]>([]);
   const [loading, setLoading] = useState(true);
   const [showCreate, setShowCreate] = useState(false);
-  const [showJoin, setShowJoin] = useState(false);
   const [selectedTeamId, setSelectedTeamId] = useState<string | null>(null);
 
   const loadTeams = useCallback(async () => {
@@ -385,10 +280,6 @@ export default function TeamManager() {
       <div className="flex items-center justify-between px-6 py-4 border-b" style={{ borderColor: "var(--border)" }}>
         <h1 className="text-lg font-semibold" style={{ color: "var(--text-primary)" }}>⚙️ Teams</h1>
         <div className="flex gap-2">
-          <button onClick={() => setShowJoin(true)} className="px-3 py-2 rounded text-sm"
-            style={{ background: "var(--bg-tertiary)", color: "var(--text-primary)" }}>
-            🔗 Join Team
-          </button>
           <button onClick={() => setShowCreate(true)} className="px-3 py-2 rounded text-sm font-medium"
             style={{ background: "var(--accent)", color: "white" }}>
             + Create Team
@@ -403,12 +294,8 @@ export default function TeamManager() {
           <div className="text-center py-16" style={{ color: "var(--text-muted)" }}>
             <div className="text-6xl mb-4">👥</div>
             <h2 className="text-xl font-semibold mb-2" style={{ color: "var(--text-primary)" }}>No teams yet</h2>
-            <p className="text-sm mb-4">Create a team or join one with an invite code</p>
+            <p className="text-sm mb-4">Create a team to get started</p>
             <div className="flex justify-center gap-3">
-              <button onClick={() => setShowJoin(true)} className="px-4 py-2 rounded text-sm"
-                style={{ background: "var(--bg-tertiary)", color: "var(--text-primary)" }}>
-                🔗 Join Team
-              </button>
               <button onClick={() => setShowCreate(true)} className="px-4 py-2 rounded text-sm font-medium"
                 style={{ background: "var(--accent)", color: "white" }}>
                 + Create Team
@@ -439,7 +326,6 @@ export default function TeamManager() {
       </div>
 
       {showCreate && <CreateTeamModal onClose={() => setShowCreate(false)} onCreated={loadTeams} />}
-      {showJoin && <JoinTeamModal onClose={() => setShowJoin(false)} onJoined={loadTeams} />}
     </div>
   );
 }

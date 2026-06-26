@@ -27,10 +27,6 @@ export async function GET(
     where: { id: teamId },
     include: {
       members: { orderBy: { joinedAt: "asc" } },
-      invites: {
-        where: { usedBy: null, expiresAt: { gt: new Date() } },
-        orderBy: { createdAt: "desc" },
-      },
     },
   });
 
