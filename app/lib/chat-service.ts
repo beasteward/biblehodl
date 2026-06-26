@@ -156,7 +156,11 @@ export function subscribeToChannelUnread(myPubkey: string) {
       if (!channelId) return;
 
       const s = useAppStore.getState();
-      if (s.activeChannelId === channelId) return; // currently viewing → read
+      // Only suppress when the channel is actually on-screen — i.e. the chat
+      // view is open AND this is the active channel. Otherwise (e.g. you're on
+      // Calendar/Meetings while a channel stays "active") its messages must
+      // still count as unread.
+      if (s.currentView === "chat" && s.activeChannelId === channelId) return;
 
       const boundary = s.lastReadAt[channelId];
       if (boundary === undefined) {

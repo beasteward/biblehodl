@@ -107,10 +107,11 @@ function handleIncomingDM(
   // conversation — keeps counts stable across reloads (gift-wrap history replays
   // on every connect) and matches "messages since you last looked".
   const boundary = store.lastReadAt[conversationId] ?? 0;
+  const isViewing = store.currentView === "chat" && store.activeChannelId === conversationId;
   if (
     !isDuplicate &&
     senderPubkey !== myPubkey &&
-    store.activeChannelId !== conversationId &&
+    !isViewing &&
     created_at > boundary
   ) {
     store.incrementUnread(conversationId);
