@@ -5,6 +5,7 @@ import { useAppStore } from "../../lib/store";
 import { fetchGames, deleteGame, createSession, type Game } from "../../lib/game-service";
 import CreateGameModal from "./CreateGameModal";
 import GameSessionView from "./GameSession";
+import ConfirmModal from "../common/ConfirmModal";
 
 function GameCard({
   game,
@@ -219,6 +220,8 @@ export default function GamesView() {
   const [showCreate, setShowCreate] = useState(false);
   const [selectedGame, setSelectedGame] = useState<Game | null>(null);
   const [filter, setFilter] = useState<"all" | "mine">("all");
+  const [deleteTarget, setDeleteTarget] = useState<{ id: string; title: string } | null>(null);
+  const [deleting, setDeleting] = useState(false);
   const [activeSession, setActiveSession] = useState<{
     gameId: string;
     sessionId: string;
@@ -243,14 +246,17 @@ export default function GamesView() {
     loadGames();
   }, [loadGames]);
 
-  const handleDelete = async (gameId: string) => {
-    if (!keys || !signer || !confirm("Delete this game and all its sessions?")) return;
+  const handleDelete = async () => {
+    if (!keys || !signer || !deleteTarget) return;
+    setDeleting(true);
     try {
-      await deleteGame(gameId, signer);
-      setGames((prev) => prev.filter((g) => g.id !== gameId));
+      await deleteGame(deleteTarget.id, signer);
+      setGames((prev) => prev.filter((g) => g.id !== deleteTarget.id));
+      setDeleteTarget(null);
     } catch (err) {
       console.error("Failed to delete:", err);
     }
+    setDeleting(false);
   };
 
   const handleSelect = async (game: Game) => {
@@ -364,7 +370,7 @@ export default function GamesView() {
                 key={game.id}
                 game={game}
                 isCreator={game.createdBy === keys?.publicKey}
-                onDelete={() => handleDelete(game.id)}
+                onDelete={() => setDeleteTarget({ id: game.id, title: game.title })}
                 onSelect={() => handleSelect(game)}
               />
             ))}
@@ -378,6 +384,23 @@ export default function GamesView() {
           onCreated={loadGames}
         />
       )}
+
+      <ConfirmModal
+        open={!!deleteTarget}
+        title="Delete game"
+        message={removeMessage(deleteTarget?.title)}
+        confirmLabel="Delete"
+        danger
+        busy={deleting}
+        onConfirm={handleDelete}
+        onClose={() => setDeleteTarget(null)}
+      />
     </div>
   );
+}
+
+function removeMessage(title?: string): string {
+  return title
+    ? `Delete “${title}” and all its sessions? This cannot be undone.`
+    : "Delete this game and all its sessions? This cannot be undone.";
 }

@@ -5,6 +5,7 @@ import { useAppStore } from "../../lib/store";
 import { uploadBlob, deleteBlob, getBlobUrl, type BlobDescriptor } from "../../lib/blossom";
 import { KIND_CHANNEL_MESSAGE } from "../../lib/nostr";
 import { pool } from "../../lib/relay-pool";
+import ConfirmModal from "../common/ConfirmModal";
 
 interface MeetingFile {
   blob: BlobDescriptor;
@@ -46,6 +47,8 @@ export default function MeetingFiles({ meetingId }: Props) {
   const [uploading, setUploading] = useState(false);
   const [dragOver, setDragOver] = useState(false);
   const [error, setError] = useState("");
+  const [deleteTarget, setDeleteTarget] = useState<string | null>(null);
+  const [deleting, setDeleting] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   // Load meeting files from Nostr events
@@ -147,14 +150,17 @@ export default function MeetingFiles({ meetingId }: Props) {
     setUploading(false);
   };
 
-  const handleDelete = async (sha256: string) => {
-    if (!keys || !signer || !confirm("Delete this file?")) return;
+  const handleDelete = async () => {
+    if (!keys || !signer || !deleteTarget) return;
+    setDeleting(true);
     try {
-      await deleteBlob(sha256, signer);
-      setFiles((prev) => prev.filter((f) => f.blob.sha256 !== sha256));
+      await deleteBlob(deleteTarget, signer);
+      setFiles((prev) => prev.filter((f) => f.blob.sha256 !== deleteTarget));
+      setDeleteTarget(null);
     } catch (err) {
       console.error("Delete failed:", err);
     }
+    setDeleting(false);
   };
 
   const handleDrop = (e: React.DragEvent) => {
@@ -282,7 +288,7 @@ export default function MeetingFiles({ meetingId }: Props) {
                     </a>
                     {file.uploadedBy === keys?.publicKey && (
                       <button
-                        onClick={() => handleDelete(file.blob.sha256)}
+                        onClick={() => setDeleteTarget(file.blob.sha256)}
                         className="text-xs px-2 py-1 rounded"
                         style={{ color: "var(--danger)" }}
                         title="Delete"
@@ -297,6 +303,17 @@ export default function MeetingFiles({ meetingId }: Props) {
           </div>
         )}
       </div>
+
+      <ConfirmModal
+        open={!!deleteTarget}
+        title="Delete file"
+        message="Delete this file? This cannot be undone."
+        confirmLabel="Delete"
+        danger
+        busy={deleting}
+        onConfirm={handleDelete}
+        onClose={() => setDeleteTarget(null)}
+      />
     </div>
   );
 }

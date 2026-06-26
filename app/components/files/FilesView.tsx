@@ -3,6 +3,7 @@
 import { useState, useEffect, useRef } from "react";
 import { useAppStore } from "../../lib/store";
 import { uploadBlob, listBlobs, deleteBlob, getBlobUrl, type BlobDescriptor } from "../../lib/blossom";
+import ConfirmModal from "../common/ConfirmModal";
 
 function formatBytes(bytes: number): string {
   if (bytes === 0) return "0 B";
@@ -43,6 +44,8 @@ export default function FilesView() {
   const [dragOver, setDragOver] = useState(false);
   const [error, setError] = useState("");
   const [viewMode, setViewMode] = useState<"list" | "grid">("list");
+  const [deleteTarget, setDeleteTarget] = useState<string | null>(null);
+  const [deleting, setDeleting] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const fetchBlobs = async () => {
@@ -78,14 +81,17 @@ export default function FilesView() {
     setUploading(false);
   };
 
-  const handleDelete = async (sha256: string) => {
-    if (!keys || !signer || !confirm("Delete this file?")) return;
+  const handleDelete = async () => {
+    if (!keys || !signer || !deleteTarget) return;
+    setDeleting(true);
     try {
-      await deleteBlob(sha256, signer);
-      setBlobs((prev) => prev.filter((b) => b.sha256 !== sha256));
+      await deleteBlob(deleteTarget, signer);
+      setBlobs((prev) => prev.filter((b) => b.sha256 !== deleteTarget));
+      setDeleteTarget(null);
     } catch (err) {
       console.error("Delete failed:", err);
     }
+    setDeleting(false);
   };
 
   const handleDrop = (e: React.DragEvent) => {
@@ -198,7 +204,7 @@ export default function FilesView() {
                 <span style={{ color: "var(--text-muted)" }}>{formatBytes(blob.size)}</span>
                 <span style={{ color: "var(--text-muted)" }}>{formatDate(blob.created)}</span>
                 <button
-                  onClick={() => handleDelete(blob.sha256)}
+                  onClick={() => setDeleteTarget(blob.sha256)}
                   className="text-xs cursor-pointer px-2 py-1 rounded"
                   style={{ color: "var(--danger)" }}
                   title="Delete"
@@ -237,7 +243,7 @@ export default function FilesView() {
                     <div className="flex items-center justify-between mt-1">
                       <span className="text-xs" style={{ color: "var(--text-muted)" }}>{formatBytes(blob.size)}</span>
                       <button
-                        onClick={() => handleDelete(blob.sha256)}
+                        onClick={() => setDeleteTarget(blob.sha256)}
                         className="text-xs cursor-pointer opacity-0 group-hover:opacity-100 transition-opacity"
                         style={{ color: "var(--danger)" }}
                       >
@@ -251,6 +257,17 @@ export default function FilesView() {
           </div>
         )}
       </div>
+
+      <ConfirmModal
+        open={!!deleteTarget}
+        title="Delete file"
+        message="Delete this file? This cannot be undone."
+        confirmLabel="Delete"
+        danger
+        busy={deleting}
+        onConfirm={handleDelete}
+        onClose={() => setDeleteTarget(null)}
+      />
     </div>
   );
 }

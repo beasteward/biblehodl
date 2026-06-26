@@ -3,6 +3,7 @@
 import { useState, useEffect, useCallback } from "react";
 import { useAppStore } from "../../lib/store";
 import { authFetch } from "../../lib/http-auth";
+import ConfirmModal from "../common/ConfirmModal";
 
 interface MemberRow {
   id: string;
@@ -34,6 +35,8 @@ export default function AdminPanel() {
   const [invites, setInvites] = useState<InviteRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
+  const [removeTarget, setRemoveTarget] = useState<{ id: string; name: string } | null>(null);
+  const [removing, setRemoving] = useState(false);
 
   const fetchMembers = useCallback(async () => {
     if (!signer) return;
@@ -63,15 +66,19 @@ export default function AdminPanel() {
       .finally(() => setLoading(false));
   }, [fetchMembers, fetchInvites]);
 
-  const handleRemoveMember = async (memberId: string) => {
-    if (!signer || !confirm("Remove this member?")) return;
+  const handleRemoveMember = async () => {
+    if (!signer || !removeTarget) return;
+    setRemoving(true);
     const res = await authFetch(signer, "/api/admin/members", {
       method: "DELETE",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ memberId }),
+      body: JSON.stringify({ memberId: removeTarget.id }),
     });
-    if (res.ok) fetchMembers();
-    else {
+    setRemoving(false);
+    if (res.ok) {
+      setRemoveTarget(null);
+      fetchMembers();
+    } else {
       const data = await res.json();
       alert(data.error || "Failed to remove member");
     }
@@ -151,7 +158,7 @@ export default function AdminPanel() {
                 </div>
                 {m.role !== "owner" && (
                   <button
-                    onClick={() => handleRemoveMember(m.id)}
+                    onClick={() => setRemoveTarget({ id: m.id, name: `${m.firstName} ${m.lastName}`.trim() || m.pubkey.slice(0, 12) })}
                     className="px-3 py-1.5 rounded text-sm cursor-pointer"
                     style={{ background: "var(--danger)", color: "white" }}
                   >
@@ -211,6 +218,17 @@ export default function AdminPanel() {
           </div>
         )}
       </div>
+
+      <ConfirmModal
+        open={!!removeTarget}
+        title="Remove member"
+        message={removeTarget ? `Remove ${removeTarget.name} from the community? This revokes their access.` : undefined}
+        confirmLabel="Remove"
+        danger
+        busy={removing}
+        onConfirm={handleRemoveMember}
+        onClose={() => setRemoveTarget(null)}
+      />
     </div>
   );
 }
