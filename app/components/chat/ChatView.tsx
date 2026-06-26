@@ -66,8 +66,9 @@ export default function ChatView() {
   }, [channelMessages, profiles]);
 
   // Toggle a reaction on a message: retract if I already reacted with this
-  // emoji, otherwise add it. Disabled in DMs (a public kind-7 would leak that
-  // an encrypted message exists).
+  // emoji, otherwise add it. Works on sent + received messages (you can react
+  // to your own). Disabled in DMs (a public kind-7 would leak that an
+  // encrypted message exists).
   const handleReact = async (msg: ChatMessage, emoji: string) => {
     if (!signer || isDM) return;
     const mine = (reactions[msg.id] || []).find(
@@ -242,10 +243,10 @@ export default function ChatView() {
                     </div>
                   )}
                   <div className="relative">
-                    {/* Hover reaction picker — received messages only */}
-                    {!isMe && !isDM && (
+                    {/* Hover reaction picker — sent + received messages */}
+                    {!isDM && (
                       <div
-                        className="absolute -top-4 left-1 z-10 flex gap-0.5 px-1.5 py-0.5 rounded-full shadow-lg opacity-0 group-hover:opacity-100 transition-opacity"
+                        className={`absolute -top-4 z-10 flex gap-0.5 px-1.5 py-0.5 rounded-full shadow-lg opacity-0 group-hover:opacity-100 transition-opacity ${isMe ? "right-1" : "left-1"}`}
                         style={{ background: "var(--bg-secondary)", border: "1px solid var(--border)" }}
                       >
                         {REACTION_EMOJIS.map((emoji) => (
