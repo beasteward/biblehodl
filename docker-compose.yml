@@ -26,6 +26,12 @@ services:
     volumes:
       - ./data:/data
       - ./config/relay-config.toml:/usr/src/app/config.toml:ro
+    environment:
+      # Image CMD runs `./nostr-rs-relay --db ${APP_DATA}`, and the --db flag
+      # overrides config.toml's data_directory. Default APP_DATA=/usr/src/app/db
+      # lives in the container's ephemeral layer (lost on recreate). Point it at
+      # the mounted ./data volume so relay events actually persist.
+      - APP_DATA=/data
     healthcheck:
       test: ["CMD", "nc", "-z", "localhost", "8080"]
       interval: 30s
