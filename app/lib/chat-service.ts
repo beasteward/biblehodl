@@ -5,9 +5,11 @@ import {
   KIND_CHANNEL_CREATE,
   KIND_CHANNEL_MESSAGE,
   KIND_METADATA,
+  KIND_REACTION,
+  KIND_DELETE,
 } from "./nostr";
 import { useAppStore } from "./store";
-import type { Channel, ChatMessage, Profile } from "./store";
+import type { ActivityItem, Channel, ChatMessage, Profile, Reaction } from "./store";
 import type { Signer } from "./signer";
 import { authFetch } from "./http-auth";
 
@@ -53,6 +55,137 @@ export async function sendChannelMessage(
   const event = await signer.signEvent({ kind: KIND_CHANNEL_MESSAGE, content, tags });
   await pool.publish(event);
   return event.id;
+}
+
+// ─── Reactions (NIP-25, kind 7) ───
+
+// NIP-25 uses "+"/"" for a generic like and "-" for a dislike; map those to
+// human-friendly glyphs and pass real emoji through untouched.
+export function normalizeReactionEmoji(content: string): string {
+  const c = (content || "").trim();
+  if (c === "" || c === "+") return "\u{1F44D}"; // 👍
+  if (c === "-") return "\u{1F44E}"; // 👎
+  return c;
+}
+
+export async function sendReaction(
+  target: { id: string; pubkey: string },
+  emoji: string,
+  signer: Signer
+): Promise<string> {
+  const tags: string[][] = [
+    ["e", target.id],
+    ["p", target.pubkey],
+    ["k", String(KIND_CHANNEL_MESSAGE)],
+  ];
+  const event = await signer.signEvent({ kind: KIND_REACTION, content: emoji, tags });
+  await pool.publish(event);
+
+  // Optimistic local render so the pill appears instantly.
+  useAppStore.getState().addReaction({
+    id: event.id,
+    targetId: target.id,
+    pubkey: signer.pubkey,
+    emoji: normalizeReactionEmoji(emoji),
+    created_at: event.created_at,
+  });
+  return event.id;
+}
+
+// Retract one of your own reactions via a NIP-09 deletion (kind 5).
+export async function retractReaction(
+  reactionId: string,
+  signer: Signer
+): Promise<void> {
+  const event = await signer.signEvent({
+    kind: KIND_DELETE,
+    content: "",
+    tags: [["e", reactionId]],
+  });
+  await pool.publish(event);
+  useAppStore.getState().removeReaction(reactionId, signer.pubkey);
+}
+
+// Global reaction + deletion subscription. Drives both the inline reaction
+// pills (any message) and the Teams-style Activity feed (reactions to *your*
+// messages). One relay-wide subscription is simple and fine at community scale.
+export function subscribeToReactions(myPubkey: string) {
+  const seen = new Set<string>();
+
+  pool.subscribe(
+    "reactions-global",
+    [
+      { kinds: [KIND_REACTION], limit: 1000 },
+      { kinds: [KIND_DELETE], limit: 500 },
+    ],
+    (event) => {
+      const store = useAppStore.getState();
+
+      // NIP-09 deletion — retract referenced reactions (author-scoped).
+      if (event.kind === KIND_DELETE) {
+        for (const t of event.tags) {
+          if (t[0] === "e" && t[1]) store.removeReaction(t[1], event.pubkey);
+        }
+        return;
+      }
+
+      if (seen.has(event.id)) return;
+      seen.add(event.id);
+
+      // Per NIP-25, the reacted event is the last "e" tag; its author the last "p".
+      const eTags = event.tags.filter((t) => t[0] === "e" && t[1]);
+      const pTags = event.tags.filter((t) => t[0] === "p" && t[1]);
+      const targetId = eTags[eTags.length - 1]?.[1];
+      const targetAuthor = pTags[pTags.length - 1]?.[1];
+      if (!targetId) return;
+
+      const emoji = normalizeReactionEmoji(event.content);
+      const reaction: Reaction = {
+        id: event.id,
+        targetId,
+        pubkey: event.pubkey,
+        emoji,
+        created_at: event.created_at,
+      };
+      store.addReaction(reaction);
+
+      // Activity: someone (not me) reacted to a message authored by me.
+      const reactedToMe =
+        targetAuthor === myPubkey ||
+        // Fall back to a locally-known message if the p tag is missing.
+        Object.values(store.messages).some((list) =>
+          list.some((m) => m.id === targetId && m.pubkey === myPubkey)
+        );
+      if (reactedToMe && event.pubkey !== myPubkey) {
+        let targetSnippet: string | undefined;
+        let channelId: string | undefined;
+        for (const [cid, list] of Object.entries(store.messages)) {
+          const m = list.find((x) => x.id === targetId);
+          if (m) {
+            targetSnippet = m.content.slice(0, 80);
+            channelId = cid;
+            break;
+          }
+        }
+        const item: ActivityItem = {
+          id: event.id,
+          type: "reaction",
+          actorPubkey: event.pubkey,
+          emoji,
+          targetId,
+          targetSnippet,
+          channelId,
+          created_at: event.created_at,
+        };
+        store.addActivity(item);
+        if (!store.profiles[event.pubkey]) fetchProfile(event.pubkey);
+      }
+    }
+  );
+}
+
+export function unsubscribeFromReactions() {
+  pool.unsubscribe("reactions-global");
 }
 
 // ─── Subscriptions ───

@@ -23,6 +23,7 @@ export default function Sidebar() {
       <div className="p-4 shrink-0" style={{ borderBottom: "1px solid var(--border)" }}>
         <h2 className="text-lg font-semibold" style={{ color: "var(--text-primary)" }}>
           {currentView === "chat" && "Chat"}
+          {currentView === "activity" && "Activity"}
           {currentView === "calendar" && "Calendar"}
           {currentView === "meetings" && "Meetings"}
           {currentView === "files" && "Files"}
@@ -34,6 +35,11 @@ export default function Sidebar() {
 
       <div className="flex-1 overflow-y-auto">
         {currentView === "chat" && <ChatSidebar />}
+        {currentView === "activity" && (
+          <div className="p-4 text-sm" style={{ color: "var(--text-secondary)" }}>
+            Reactions and mentions on your messages collect here.
+          </div>
+        )}
         {currentView === "calendar" && (
           <div className="p-4">
             <h3 className="text-xs font-semibold uppercase tracking-wider mb-3" style={{ color: "var(--text-muted)" }}>
