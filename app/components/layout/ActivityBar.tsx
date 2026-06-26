@@ -18,7 +18,11 @@ export default function ActivityBar() {
   const keys = useAppStore((s) => s.keys);
   const memberProfile = useAppStore((s) => s.memberProfile);
   const connectedRelays = useAppStore((s) => s.connectedRelays);
+  const channels = useAppStore((s) => s.channels);
   const isAdmin = memberProfile?.role === "owner" || memberProfile?.role === "admin";
+
+  // Total unread across all chat channels + DMs for the current user.
+  const unreadTotal = channels.reduce((sum, c) => sum + (c.unreadCount || 0), 0);
   const visibleItems = navItems.filter((item) => !item.adminOnly || isAdmin);
 
   return (
@@ -43,6 +47,14 @@ export default function ActivityBar() {
           title={item.label}
         >
           {item.icon}
+          {item.view === "chat" && unreadTotal > 0 && (
+            <span
+              className="absolute -top-1 -right-1 min-w-[18px] h-[18px] flex items-center justify-center rounded-full text-[10px] font-bold px-1"
+              style={{ background: "var(--danger)", color: "white" }}
+            >
+              {unreadTotal > 99 ? "99+" : unreadTotal}
+            </span>
+          )}
           {currentView === item.view && (
             <div
               className="absolute left-0 top-1/2 -translate-y-1/2 w-[3px] h-6 rounded-r"
