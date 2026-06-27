@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { useAppStore } from "../../lib/store";
+import type { ChatMessage } from "../../lib/store";
 import {
   sendMeetingMessage,
   subscribeToMeetingMessages,
@@ -30,11 +31,17 @@ interface Props {
   onBack: () => void;
 }
 
+// Stable empty-array reference. Returning `s.messages[meetingId] || []` directly
+// from a zustand v5 selector creates a NEW array every render whenever the
+// meeting has no cached messages yet, which makes useSyncExternalStore see a
+// changed snapshot on every render -> infinite re-render loop (React #185).
+const EMPTY_MESSAGES: ChatMessage[] = [];
+
 export default function MeetingRoom({ meetingId, onBack }: Props) {
   const keys = useAppStore((s) => s.keys);
   const signer = useAppStore((s) => s.signer);
   const meeting = useAppStore((s) => s.meetings.find((m) => m.id === meetingId));
-  const messages = useAppStore((s) => s.messages[meetingId] || []);
+  const messages = useAppStore((s) => s.messages[meetingId]) ?? EMPTY_MESSAGES;
   const profiles = useAppStore((s) => s.profiles);
   const [input, setInput] = useState("");
   const [sending, setSending] = useState(false);
