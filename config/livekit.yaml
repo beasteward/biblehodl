@@ -1,0 +1,23 @@
+# LiveKit server config for BibleHodl meeting calls.
+# API keys are injected at runtime via the compose `--keys` flag from
+# LIVEKIT_API_KEY / LIVEKIT_API_SECRET in .env (kept out of source control).
+
+port: 7880
+
+rtc:
+  tcp_port: 7881
+  port_range_start: 50000
+  port_range_end: 50100
+  # Single-node deployment behind a public IP: advertise the host's external IP
+  # for ICE candidates so browsers can reach the media ports directly.
+  use_external_ip: true
+
+# Audio-first defaults keep bandwidth sane for 50-300 member communities.
+# Raise/adjust as you validate real concurrency on your host.
+room:
+  auto_create: true
+  empty_timeout: 300       # tear down an empty room after 5 min
+  max_participants: 100
+
+logging:
+  level: info

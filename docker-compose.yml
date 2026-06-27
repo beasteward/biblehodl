@@ -59,6 +59,27 @@ services:
       retries: 3
       start_period: 15s
 
+  # Self-hosted WebRTC SFU for meeting voice/video (NIP-98-gated tokens minted
+  # by the app at /api/livekit/token). Signaling is reverse-proxied via Caddy
+  # (wss://livekit.${DOMAIN}); media uses the UDP range + TCP fallback below,
+  # which must be open on the host firewall and reachable on the public IP.
+  livekit:
+    image: livekit/livekit-server:latest
+    restart: unless-stopped
+    command: --config /etc/livekit/livekit.yaml --keys "${LIVEKIT_API_KEY}: ${LIVEKIT_API_SECRET}"
+    volumes:
+      - ./config/livekit.yaml:/etc/livekit/livekit.yaml:ro
+    ports:
+      - "7880:7880"            # http/ws signaling (proxied by Caddy)
+      - "7881:7881"            # tcp ICE fallback
+      - "50000-50100:50000-50100/udp"  # rtc media (widen for more concurrency)
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:7880/ >/dev/null 2>&1 || exit 1"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+
   caddy:
     image: caddy:2-alpine
     restart: unless-stopped
@@ -75,6 +96,7 @@ services:
       - app
       - relay
       - blossom
+      - livekit
 
   # Optional: CPDV Bible API
   # Most communities can use the shared instance at cpdv-bible-production.up.railway.app

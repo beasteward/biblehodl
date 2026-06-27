@@ -8,8 +8,12 @@
     "start": "next start"
   },
   "dependencies": {
+    "@livekit/components-react": "^2.9.21",
+    "@livekit/components-styles": "^1.2.0",
     "@prisma/client": "^6.19.2",
     "blossom-client-sdk": "^1.0.0",
+    "livekit-client": "^2.20.0",
+    "livekit-server-sdk": "^2.15.5",
     "next": "^16.1.6",
     "nostr-tools": "^2.11.0",
     "prisma": "^6.19.2",

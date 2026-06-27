@@ -10,6 +10,12 @@ files.{$DOMAIN} {
 	reverse_proxy blossom:3000
 }
 
+# LiveKit signaling (WebSocket). Media (RTC) does NOT pass through here — it
+# uses the UDP range / TCP 7881 published by the livekit service directly.
+livekit.{$DOMAIN} {
+	reverse_proxy livekit:7880
+}
+
 # Uncomment when running local CPDV Bible API:
 # api.{$DOMAIN} {
 # 	reverse_proxy bible-api:4000

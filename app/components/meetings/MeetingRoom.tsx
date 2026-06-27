@@ -11,6 +11,7 @@ import {
 import MeetingWhiteboard from "./MeetingWhiteboard";
 import MeetingFiles from "./MeetingFiles";
 import MeetingGames from "./MeetingGames";
+import MeetingCall from "./MeetingCall";
 
 interface Props {
   meetingId: string;
@@ -26,7 +27,7 @@ export default function MeetingRoom({ meetingId, onBack }: Props) {
   const [input, setInput] = useState("");
   const [sending, setSending] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
-  const [activeTab, setActiveTab] = useState<"chat" | "whiteboard" | "files" | "games">("chat");
+  const [activeTab, setActiveTab] = useState<"chat" | "call" | "whiteboard" | "files" | "games">("chat");
 
   useEffect(() => {
     subscribeToMeetingMessages(meetingId);
@@ -148,7 +149,7 @@ export default function MeetingRoom({ meetingId, onBack }: Props) {
         className="flex border-b px-4"
         style={{ borderColor: "var(--border)", background: "var(--bg-secondary)" }}
       >
-        {(["chat", "whiteboard", "files", "games"] as const).map((tab) => (
+        {(["chat", "call", "whiteboard", "files", "games"] as const).map((tab) => (
           <button
             key={tab}
             onClick={() => setActiveTab(tab)}
@@ -158,7 +159,7 @@ export default function MeetingRoom({ meetingId, onBack }: Props) {
               color: activeTab === tab ? "var(--text-primary)" : "var(--text-muted)",
             }}
           >
-            {tab === "chat" ? "💬 Chat" : tab === "whiteboard" ? "🎨 Whiteboard" : tab === "files" ? "📁 Files" : "🎮 Games"}
+            {tab === "chat" ? "💬 Chat" : tab === "call" ? "📞 Call" : tab === "whiteboard" ? "🎨 Whiteboard" : tab === "files" ? "📁 Files" : "🎮 Games"}
           </button>
         ))}
       </div>
@@ -237,6 +238,10 @@ export default function MeetingRoom({ meetingId, onBack }: Props) {
             </div>
           </div>
         </div>
+      )}
+
+      {activeTab === "call" && (
+        <MeetingCall meetingId={meetingId} />
       )}
 
       {activeTab === "whiteboard" && (
