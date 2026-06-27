@@ -104,5 +104,7 @@ export async function POST(
     }
   }
 
-  return NextResponse.json({ added: added.length });
+  // Return the canonical hex pubkeys actually added so the client can publish
+  // membership notifications to exactly those users.
+  return NextResponse.json({ added: added.length, pubkeys: added.map((a) => a.pubkey) });
 }

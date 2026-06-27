@@ -69,7 +69,7 @@ export default function ActivityView() {
           <div className="text-center py-16" style={{ color: "var(--text-muted)" }}>
             <div className="text-5xl mb-3">🔔</div>
             <p className="text-sm">No activity yet.</p>
-            <p className="text-xs mt-1">Reactions to your messages will show up here.</p>
+            <p className="text-xs mt-1">Reactions and channel invites will show up here.</p>
           </div>
         )}
 
@@ -100,16 +100,20 @@ export default function ActivityView() {
                     {getDisplayName(a.actorPubkey).slice(0, 2).toUpperCase()}
                   </div>
                 )}
-                <span className="absolute -bottom-1 -right-1 text-sm">{a.emoji}</span>
+                <span className="absolute -bottom-1 -right-1 text-sm">
+                  {a.type === "channel_add" ? "➕" : a.emoji}
+                </span>
               </div>
               <div className="min-w-0 flex-1">
                 <div className="text-sm" style={{ color: "var(--text-primary)" }}>
                   <span className="font-semibold">{getDisplayName(a.actorPubkey)}</span>
                   <span style={{ color: "var(--text-secondary)" }}>
-                    {" "}reacted {a.emoji} to your message{where ? ` in ${where}` : ""}
+                    {a.type === "channel_add"
+                      ? ` added you to ${a.channelName ? `#${a.channelName}` : where || "a channel"}`
+                      : ` reacted ${a.emoji} to your message${where ? ` in ${where}` : ""}`}
                   </span>
                 </div>
-                {a.targetSnippet && (
+                {a.type === "reaction" && a.targetSnippet && (
                   <div
                     className="text-xs mt-0.5 truncate italic"
                     style={{ color: "var(--text-muted)" }}

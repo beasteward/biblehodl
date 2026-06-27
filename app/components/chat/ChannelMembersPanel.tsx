@@ -3,6 +3,7 @@
 import { useState, useEffect, useCallback } from "react";
 import { useAppStore } from "../../lib/store";
 import { authFetch } from "../../lib/http-auth";
+import { publishChannelMembership } from "../../lib/chat-service";
 import MemberSearch, { type MemberResult } from "../common/MemberSearch";
 import ConfirmModal from "../common/ConfirmModal";
 
@@ -75,6 +76,15 @@ export default function ChannelMembersPanel({ channelId, onClose }: ChannelMembe
         throw new Error(data.error || `Failed to add member (${res.status})`);
       }
       setError("");
+      // Notify each newly-added user so the channel appears live + an Activity
+      // notification is raised on their end.
+      const data = await res.json().catch(() => ({} as { pubkeys?: string[] }));
+      const addedPubkeys: string[] = Array.isArray(data.pubkeys) ? data.pubkeys : [];
+      const channelName = channel?.name || "a channel";
+      for (const pk of addedPubkeys) {
+        if (pk === keys.publicKey) continue;
+        publishChannelMembership(signer, pk, channelId, channelName).catch(() => {});
+      }
     } catch (e) {
       setError(e instanceof Error ? e.message : "Failed to add member");
     } finally {

@@ -29,15 +29,17 @@ export interface Reaction {
   created_at: number;
 }
 
-// A Teams-style Activity feed entry — currently "someone reacted to your message".
+// A Teams-style Activity feed entry. Supports reactions to your messages and
+// being added to a channel; can grow to mentions, replies, RSVPs, etc.
 export interface ActivityItem {
-  id: string; // reaction event id (stable, dedup key)
-  type: "reaction";
-  actorPubkey: string; // who reacted
-  emoji: string;
-  targetId: string; // your message they reacted to
-  targetSnippet?: string; // preview of your message, if known
-  channelId?: string; // channel/DM the message lives in, if known
+  id: string; // source event id (stable, dedup key)
+  type: "reaction" | "channel_add";
+  actorPubkey: string; // who performed the action
+  emoji?: string; // reaction only
+  targetId?: string; // reaction: your message they reacted to
+  targetSnippet?: string; // reaction: preview of your message, if known
+  channelId?: string; // channel/DM the item relates to, if known
+  channelName?: string; // channel_add: name of the channel you were added to
   created_at: number;
 }
 

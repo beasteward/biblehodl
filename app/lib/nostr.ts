@@ -22,6 +22,10 @@ export const KIND_CHANNEL_MESSAGE = 42;
 export const KIND_CHANNEL_MUTE = 43;
 export const KIND_CHANNEL_MUTE_USER = 44;
 
+// App-specific: notify a user they were added to a (membership-gated) channel.
+// Regular event, p-tagged at the added user; content = {channelId, channelName}.
+export const KIND_CHANNEL_MEMBERSHIP = 9001;
+
 // NIP-25 Reactions
 export const KIND_REACTION = 7;
 

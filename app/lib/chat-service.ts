@@ -4,6 +4,7 @@ import { pool } from "./relay-pool";
 import {
   KIND_CHANNEL_CREATE,
   KIND_CHANNEL_MESSAGE,
+  KIND_CHANNEL_MEMBERSHIP,
   KIND_METADATA,
   KIND_REACTION,
   KIND_DELETE,
@@ -186,6 +187,78 @@ export function subscribeToReactions(myPubkey: string) {
 
 export function unsubscribeFromReactions() {
   pool.unsubscribe("reactions-global");
+}
+
+// ─── Channel membership notifications (kind 9001) ───
+
+// Publish a notification to a user that they were added to a channel. Called by
+// the admin's client after the server records the membership.
+export async function publishChannelMembership(
+  signer: Signer,
+  addedPubkey: string,
+  channelId: string,
+  channelName: string
+): Promise<void> {
+  const event = await signer.signEvent({
+    kind: KIND_CHANNEL_MEMBERSHIP,
+    content: JSON.stringify({ channelId, channelName }),
+    tags: [
+      ["p", addedPubkey],
+      ["e", channelId],
+      ["t", "channel-add"],
+    ],
+  });
+  await pool.publish(event);
+}
+
+// Subscribe to "you were added to a channel" notifications addressed to me.
+// On receipt we re-fetch authoritative membership (never trust the event for
+// access) and surface an Activity notification.
+export function subscribeToChannelMembership(myPubkey: string) {
+  const seen = new Set<string>();
+  pool.subscribe(
+    "channel-membership",
+    [{ kinds: [KIND_CHANNEL_MEMBERSHIP], "#p": [myPubkey] }],
+    (event) => {
+      const store = useAppStore.getState();
+      if (seen.has(event.id)) return;
+      seen.add(event.id);
+      if (event.pubkey === myPubkey) return; // ignore anything I published
+
+      let channelId: string | undefined;
+      let channelName: string | undefined;
+      try {
+        const meta = JSON.parse(event.content);
+        channelId = meta.channelId;
+        channelName = meta.channelName;
+      } catch {
+        // fall through to tag
+      }
+      if (!channelId) channelId = event.tags.find((t) => t[0] === "e")?.[1];
+      if (!channelId) return;
+
+      // Authoritative membership refresh from the DB.
+      refreshMyChannels();
+      store.ensureChannelTracked(channelId);
+      if (channelName && !store.channels.some((c) => c.id === channelId)) {
+        store.addChannel({ id: channelId, name: channelName });
+      }
+
+      store.addActivity({
+        id: event.id,
+        type: "channel_add",
+        actorPubkey: event.pubkey,
+        channelId,
+        channelName: channelName || store.channels.find((c) => c.id === channelId)?.name,
+        created_at: event.created_at,
+      });
+      if (!store.profiles[event.pubkey]) fetchProfile(event.pubkey);
+    }
+  );
+}
+
+export function unsubscribeFromChannelMembership() {
+  pool.unsubscribe("channel-membership");
 }
 
 // ─── Subscriptions ───
@@ -395,16 +468,23 @@ export async function initChat() {
   store.setChannels([]);
   subscribeToChannels();
 
-  // Load user's channel memberships
-  if (store.signer) {
-    try {
-      const res = await authFetch(store.signer, "/api/channels/my");
-      const data = await res.json();
-      const ids = new Set<string>((data.channels || []).map((c: { id: string }) => c.id));
-      store.setMyChannelIds(ids);
-    } catch {
-      // non-critical
-    }
+  // Load user's channel memberships (authoritative, DB-backed)
+  await refreshMyChannels();
+}
+
+// Re-fetch the set of channels the current user is a member of from the
+// authoritative DB endpoint. Used at init and whenever a membership-change
+// notification arrives (so we never trust a relay event for access).
+export async function refreshMyChannels() {
+  const store = useAppStore.getState();
+  if (!store.signer) return;
+  try {
+    const res = await authFetch(store.signer, "/api/channels/my");
+    const data = await res.json();
+    const ids = new Set<string>((data.channels || []).map((c: { id: string }) => c.id));
+    store.setMyChannelIds(ids);
+  } catch {
+    // non-critical
   }
 }
 

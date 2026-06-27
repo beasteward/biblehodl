@@ -8,6 +8,8 @@ import {
   subscribeToChannelUnread,
   subscribeToReactions,
   unsubscribeFromReactions,
+  subscribeToChannelMembership,
+  unsubscribeFromChannelMembership,
 } from "../../lib/chat-service";
 import { subscribeToDMs } from "../../lib/dm-service";
 import { subscribeToCalendarEvents } from "../../lib/calendar-service";
@@ -47,12 +49,14 @@ export default function AppShell() {
         subscribeToDMs(signer);
         subscribeToChannelUnread(keys.publicKey);
         subscribeToReactions(keys.publicKey);
+        subscribeToChannelMembership(keys.publicKey);
         subscribeToCalendarEvents([keys.publicKey]);
         initMeetings();
       }
     });
     return () => {
       unsubscribeFromReactions();
+      unsubscribeFromChannelMembership();
       teardownChat();
     };
   }, [keys, signer]);
