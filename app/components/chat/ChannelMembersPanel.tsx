@@ -26,6 +26,8 @@ export default function ChannelMembersPanel({ channelId, onClose }: ChannelMembe
   const [loading, setLoading] = useState(true);
   const [myRole, setMyRole] = useState<string | null>(null);
   const [error, setError] = useState("");
+  const [newPubkey, setNewPubkey] = useState("");
+  const [adding, setAdding] = useState(false);
 
   const fetchMembers = useCallback(async () => {
     if (!keys || !signer) return;
@@ -53,13 +55,14 @@ export default function ChannelMembersPanel({ channelId, onClose }: ChannelMembe
 
   const canManage = myRole === "owner" || myRole === "admin";
 
-  const handleAdd = async (member: MemberResult) => {
-    if (!keys || !signer) return;
+  const handleAddPubkey = async (pubkey: string) => {
+    if (!keys || !signer || !pubkey.trim()) return;
+    setAdding(true);
     try {
       const res = await authFetch(signer, `/api/channels/${channelId}/members`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ pubkey: member.pubkey }),
+        body: JSON.stringify({ pubkey: pubkey.trim() }),
       });
       if (!res.ok) {
         const data = await res.json().catch(() => ({}));
@@ -69,9 +72,12 @@ export default function ChannelMembersPanel({ channelId, onClose }: ChannelMembe
     } catch (e) {
       setError(e instanceof Error ? e.message : "Failed to add member");
     } finally {
+      setAdding(false);
       fetchMembers();
     }
   };
+
+  const handleAdd = (member: MemberResult) => handleAddPubkey(member.pubkey);
 
   const handleRemove = async (pubkey: string) => {
     if (!keys || !signer) return;
@@ -142,12 +148,36 @@ export default function ChannelMembersPanel({ channelId, onClose }: ChannelMembe
 
       {/* Add member */}
       {canManage && (
-        <div className="px-3 py-3" style={{ borderBottom: "1px solid var(--border)" }}>
+        <div className="px-3 py-3 space-y-2" style={{ borderBottom: "1px solid var(--border)" }}>
           <MemberSearch
+            scope="directory"
             onSelect={handleAdd}
-            placeholder="Add member..."
+            placeholder="Add by name or email..."
             excludePubkeys={existingPubkeys}
           />
+          <div className="flex gap-2">
+            <input
+              type="text"
+              value={newPubkey}
+              onChange={(e) => setNewPubkey(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter" && newPubkey.trim()) {
+                  handleAddPubkey(newPubkey).then(() => setNewPubkey(""));
+                }
+              }}
+              placeholder="…or paste an npub / hex pubkey"
+              className="flex-1 px-2 py-1.5 rounded text-sm outline-none min-w-0"
+              style={{ background: "var(--bg-tertiary)", color: "var(--text-primary)", border: "1px solid var(--border)" }}
+            />
+            <button
+              onClick={() => handleAddPubkey(newPubkey).then(() => setNewPubkey(""))}
+              disabled={!newPubkey.trim() || adding}
+              className="px-3 py-1.5 rounded text-sm font-medium disabled:opacity-50 shrink-0"
+              style={{ background: "var(--accent)", color: "white" }}
+            >
+              {adding ? "..." : "Add"}
+            </button>
+          </div>
         </div>
       )}
 

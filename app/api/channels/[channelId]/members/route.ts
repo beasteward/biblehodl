@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { PrismaClient } from "@prisma/client";
 import { getPubkeyFromRequest } from "../../../../lib/auth";
+import { normalizePubkey } from "../../../../lib/pubkey";
 
 const prisma = new PrismaClient();
 
@@ -71,11 +72,26 @@ export async function POST(
     return NextResponse.json({ added: 1 });
   }
 
-  const pubkeys: string[] = Array.isArray(body.pubkeys) ? body.pubkeys : [body.pubkey];
+  const rawPubkeys: unknown[] = Array.isArray(body.pubkeys) ? body.pubkeys : [body.pubkey];
+
+  // Normalize npub/hex -> canonical hex; reject if nothing valid was supplied.
+  const pubkeys: string[] = [];
+  let sawInvalid = false;
+  for (const raw of rawPubkeys) {
+    const hex = normalizePubkey(raw);
+    if (hex) pubkeys.push(hex);
+    else if (raw) sawInvalid = true;
+  }
+
+  if (pubkeys.length === 0) {
+    return NextResponse.json(
+      { error: sawInvalid ? "Invalid pubkey (must be an npub or 64-char hex)" : "No pubkey provided" },
+      { status: 400 }
+    );
+  }
 
   const added = [];
   for (const pubkey of pubkeys) {
-    if (!pubkey) continue;
     try {
       const cm = await prisma.channelMember.create({
         data: { channelId, pubkey, role: "member" },
