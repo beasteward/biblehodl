@@ -8,10 +8,22 @@ import {
   unsubscribeFromMeetingMessages,
   updateMeetingStatus,
 } from "../../lib/meeting-service";
+import dynamic from "next/dynamic";
 import MeetingWhiteboard from "./MeetingWhiteboard";
 import MeetingFiles from "./MeetingFiles";
 import MeetingGames from "./MeetingGames";
-import MeetingCall from "./MeetingCall";
+
+// LiveKit pulls in browser-only WebRTC code; load it only when the Call tab is
+// opened (never on SSR or on meeting-room mount) to keep the room lightweight
+// and avoid any import-time crashes from leaking into the whole room view.
+const MeetingCall = dynamic(() => import("./MeetingCall"), {
+  ssr: false,
+  loading: () => (
+    <div className="flex-1 flex items-center justify-center" style={{ color: "var(--text-muted)" }}>
+      Loading call…
+    </div>
+  ),
+});
 
 interface Props {
   meetingId: string;
