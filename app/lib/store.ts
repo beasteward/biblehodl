@@ -12,12 +12,19 @@ export interface MemberProfile {
   role?: string;
 }
 
+// Delivery state for a message we sent. Received messages carry no status
+// (treated as already delivered). "sending" = optimistically rendered, publish
+// in flight; "failed" = reached zero relays; "sent" = at least one relay
+// accepted it (or the relay echoed it back to us).
+export type MessageStatus = "sending" | "sent" | "failed";
+
 export interface ChatMessage {
   id: string;
   pubkey: string;
   content: string;
   created_at: number;
   channelId?: string;
+  status?: MessageStatus;
 }
 
 // NIP-25 reaction (kind 7) targeting a chat message.
@@ -119,6 +126,7 @@ interface AppState {
   setActiveChannelId: (id: string | null) => void;
   messages: Record<string, ChatMessage[]>;
   addMessage: (channelId: string, message: ChatMessage) => void;
+  updateMessageStatus: (channelId: string, id: string, status: MessageStatus) => void;
 
   // Reactions, keyed by the target message id.
   reactions: Record<string, Reaction[]>;
@@ -282,7 +290,19 @@ export const useAppStore = create<AppState>()(
       addMessage: (channelId, message) =>
         set((state) => {
           const existing = state.messages[channelId] || [];
-          if (existing.some((m) => m.id === message.id)) return state;
+          const dupIdx = existing.findIndex((m) => m.id === message.id);
+          if (dupIdx !== -1) {
+            // Already have this message. If it's our own optimistic copy still
+            // marked sending/failed and the authoritative relay echo just
+            // arrived, confirm delivery so the UI clears the pending state.
+            const cur = existing[dupIdx];
+            if (cur.status && cur.status !== "sent") {
+              const next = [...existing];
+              next[dupIdx] = { ...cur, status: "sent" };
+              return { messages: { ...state.messages, [channelId]: next } };
+            }
+            return state;
+          }
           const sorted = [...existing, message].sort(
             (a, b) => a.created_at - b.created_at
           );
@@ -297,6 +317,17 @@ export const useAppStore = create<AppState>()(
             ),
           };
         }),
+      updateMessageStatus: (channelId, id, status) =>
+        set((state) => {
+          const list = state.messages[channelId];
+          if (!list) return state;
+          const idx = list.findIndex((m) => m.id === id);
+          if (idx === -1 || list[idx].status === status) return state;
+          const next = [...list];
+          next[idx] = { ...next[idx], status };
+          return { messages: { ...state.messages, [channelId]: next } };
+        }),
+
       // ── Unread tracking ──
       unreadCounts: {},
       lastReadAt: {},

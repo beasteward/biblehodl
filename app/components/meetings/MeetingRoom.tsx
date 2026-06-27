@@ -13,6 +13,7 @@ import dynamic from "next/dynamic";
 import MeetingWhiteboard from "./MeetingWhiteboard";
 import MeetingFiles from "./MeetingFiles";
 import MeetingGames from "./MeetingGames";
+import { retryMessage } from "../../lib/outbox";
 
 // LiveKit pulls in browser-only WebRTC code; load it only when the Call tab is
 // opened (never on SSR or on meeting-room mount) to keep the room lightweight
@@ -222,6 +223,22 @@ export default function MeetingRoom({ meetingId, onBack }: Props) {
                     <p className="text-sm" style={{ color: "var(--text-primary)" }}>
                       {msg.content}
                     </p>
+                    {isMe && msg.status === "sending" && (
+                      <span className="text-xs" style={{ color: "var(--text-muted)" }}>
+                        Sending…
+                      </span>
+                    )}
+                    {isMe && msg.status === "failed" && (
+                      <span className="text-xs" style={{ color: "#ef4444" }}>
+                        Failed to send ·{" "}
+                        <button
+                          onClick={() => retryMessage(msg.id)}
+                          className="underline hover:opacity-80"
+                        >
+                          Retry
+                        </button>
+                      </span>
+                    )}
                   </div>
                 </div>
               );

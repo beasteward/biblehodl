@@ -12,6 +12,7 @@ import {
 } from "../../lib/chat-service";
 import type { ChatMessage } from "../../lib/store";
 import { sendDirectMessage, sendDmReaction, retractDmReaction } from "../../lib/dm-service";
+import { retryMessage } from "../../lib/outbox";
 import ChannelMembersPanel from "./ChannelMembersPanel";
 
 // Quick-reaction palette shown on message hover (Teams-style).
@@ -309,6 +310,22 @@ export default function ChatView() {
                       </div>
                     );
                   })()}
+                  {isMe && msg.status === "sending" && (
+                    <span className="text-xs mt-0.5" style={{ color: "var(--text-muted)" }}>
+                      Sending…
+                    </span>
+                  )}
+                  {isMe && msg.status === "failed" && (
+                    <span className="text-xs mt-0.5" style={{ color: "#ef4444" }}>
+                      Failed to send ·{" "}
+                      <button
+                        onClick={() => retryMessage(msg.id)}
+                        className="underline hover:opacity-80 cursor-pointer"
+                      >
+                        Retry
+                      </button>
+                    </span>
+                  )}
                 </div>
                 {!showHeader && (
                   <span className="text-xs opacity-0 group-hover:opacity-100 shrink-0 self-center" style={{ color: "var(--text-muted)" }}>{time}</span>

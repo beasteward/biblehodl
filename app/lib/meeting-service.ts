@@ -11,6 +11,7 @@ import { useAppStore } from "./store";
 import type { Meeting, ChatMessage } from "./store";
 import type { Signer } from "./signer";
 import { fetchProfile } from "./chat-service";
+import { sendOptimistic } from "./outbox";
 
 // ─── Meeting Room Creation (kind 40, type: "meeting") ───
 
@@ -48,7 +49,9 @@ export async function sendMeetingMessage(
 ): Promise<string> {
   const tags: string[][] = [["e", meetingId, "", "root"]];
   const event = await signer.signEvent({ kind: KIND_CHANNEL_MESSAGE, content, tags });
-  await pool.publish(event);
+  // Optimistic render + tracked delivery so meeting chat never silently drops a
+  // message when the relay socket is briefly unavailable.
+  await sendOptimistic(meetingId, event);
   return event.id;
 }
 

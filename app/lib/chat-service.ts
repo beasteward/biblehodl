@@ -13,6 +13,7 @@ import { useAppStore } from "./store";
 import type { ActivityItem, Channel, ChatMessage, Profile, Reaction } from "./store";
 import type { Signer } from "./signer";
 import { authFetch } from "./http-auth";
+import { sendOptimistic } from "./outbox";
 
 // ─── Channel Creation (kind 40) ───
 
@@ -54,7 +55,9 @@ export async function sendChannelMessage(
   }
 
   const event = await signer.signEvent({ kind: KIND_CHANNEL_MESSAGE, content, tags });
-  await pool.publish(event);
+  // Optimistic render + tracked delivery (sending → sent/failed) so the message
+  // appears instantly and never silently disappears if the relay is briefly down.
+  await sendOptimistic(channelId, event);
   return event.id;
 }
 
