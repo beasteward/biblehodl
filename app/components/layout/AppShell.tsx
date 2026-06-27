@@ -65,7 +65,7 @@ export default function AppShell() {
     <div className="flex h-screen w-screen overflow-hidden">
       <ActivityBar />
       <Sidebar />
-      <main className="flex-1 flex flex-col min-w-0" style={{ background: "var(--bg-primary)" }}>
+      <main className="flex-1 flex flex-col min-w-0 pb-14 md:pb-0" style={{ background: "var(--bg-primary)" }}>
         <ActiveView />
       </main>
     </div>
