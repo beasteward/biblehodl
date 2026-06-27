@@ -46,6 +46,7 @@ export interface Channel {
   name: string;
   about?: string;
   picture?: string;
+  createdBy?: string;
   isDirectMessage?: boolean;
   participants?: string[];
   lastMessage?: ChatMessage;

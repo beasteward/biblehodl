@@ -205,6 +205,7 @@ export function subscribeToChannels() {
           name: meta.name || "Unnamed",
           about: meta.about,
           picture: meta.picture,
+          createdBy: event.pubkey,
         };
         store.addChannel(channel);
         // Start tracking unread for newly-discovered channels (boundary = now)

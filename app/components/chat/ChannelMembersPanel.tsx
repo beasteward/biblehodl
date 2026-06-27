@@ -23,6 +23,7 @@ export default function ChannelMembersPanel({ channelId, onClose }: ChannelMembe
   const keys = useAppStore((s) => s.keys);
   const signer = useAppStore((s) => s.signer);
   const profiles = useAppStore((s) => s.profiles);
+  const channel = useAppStore((s) => s.channels.find((c) => c.id === channelId));
   const [members, setMembers] = useState<ChannelMemberInfo[]>([]);
   const [loading, setLoading] = useState(true);
   const [myRole, setMyRole] = useState<string | null>(null);
@@ -57,6 +58,8 @@ export default function ChannelMembersPanel({ channelId, onClose }: ChannelMembe
   }, [fetchMembers]);
 
   const canManage = myRole === "owner" || myRole === "admin";
+  // A channel created before an owner row existed can be claimed by its creator.
+  const canClaim = !loading && !error && members.length === 0 && !!keys && channel?.createdBy === keys.publicKey;
 
   const handleAddPubkey = async (pubkey: string) => {
     if (!keys || !signer || !pubkey.trim()) return;
@@ -151,6 +154,23 @@ export default function ChannelMembersPanel({ channelId, onClose }: ChannelMembe
           ✕
         </button>
       </div>
+
+      {/* Claim ownership of an orphaned channel (creator only) */}
+      {canClaim && (
+        <div className="px-3 py-3 space-y-2" style={{ borderBottom: "1px solid var(--border)" }}>
+          <p className="text-xs" style={{ color: "var(--text-muted)" }}>
+            You created this channel. Claim ownership to manage members.
+          </p>
+          <button
+            onClick={() => keys && handleAddPubkey(keys.publicKey)}
+            disabled={adding}
+            className="w-full px-3 py-1.5 rounded text-sm font-medium disabled:opacity-50"
+            style={{ background: "var(--accent)", color: "white" }}
+          >
+            {adding ? "..." : "Claim ownership"}
+          </button>
+        </div>
+      )}
 
       {/* Add member */}
       {canManage && (

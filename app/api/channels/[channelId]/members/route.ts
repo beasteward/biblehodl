@@ -48,28 +48,30 @@ export async function POST(
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
-  // Check requester is owner or admin
+  const body = await req.json();
+
+  // Bootstrap: if the channel has no members yet, the requester (the channel
+  // creator, who claims ownership right after publishing kind 40) becomes
+  // owner. This MUST run before the owner/admin check below, otherwise no one
+  // can ever become the first owner (chicken-and-egg).
+  const memberCount = await prisma.channelMember.count({ where: { channelId } });
+  if (memberCount === 0) {
+    try {
+      await prisma.channelMember.create({
+        data: { channelId, pubkey: requesterPubkey, role: "owner" },
+      });
+    } catch {
+      // already exists — race, ignore
+    }
+    return NextResponse.json({ added: 1 });
+  }
+
+  // For a channel that already has members, only owner/admin may add others.
   const requester = await prisma.channelMember.findUnique({
     where: { channelId_pubkey: { channelId, pubkey: requesterPubkey } },
   });
   if (!requester || !["owner", "admin"].includes(requester.role)) {
     return NextResponse.json({ error: "Not authorized" }, { status: 403 });
-  }
-
-  const body = await req.json();
-
-  // Bootstrap: if channel has no members yet, the requester becomes owner
-  const memberCount = await prisma.channelMember.count({ where: { channelId } });
-  if (memberCount === 0) {
-    // First member — make them owner
-    try {
-      await prisma.channelMember.create({
-        data: { channelId, pubkey: requesterPubkey, role: body.role || "owner" },
-      });
-    } catch {
-      // already exists
-    }
-    return NextResponse.json({ added: 1 });
   }
 
   const rawPubkeys: unknown[] = Array.isArray(body.pubkeys) ? body.pubkeys : [body.pubkey];
