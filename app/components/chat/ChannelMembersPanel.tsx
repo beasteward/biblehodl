@@ -4,6 +4,7 @@ import { useState, useEffect, useCallback } from "react";
 import { useAppStore } from "../../lib/store";
 import { authFetch } from "../../lib/http-auth";
 import MemberSearch, { type MemberResult } from "../common/MemberSearch";
+import ConfirmModal from "../common/ConfirmModal";
 
 interface ChannelMemberInfo {
   pubkey: string;
@@ -28,6 +29,8 @@ export default function ChannelMembersPanel({ channelId, onClose }: ChannelMembe
   const [error, setError] = useState("");
   const [newPubkey, setNewPubkey] = useState("");
   const [adding, setAdding] = useState(false);
+  const [removeTarget, setRemoveTarget] = useState<{ pubkey: string; name: string; isSelf: boolean } | null>(null);
+  const [removing, setRemoving] = useState(false);
 
   const fetchMembers = useCallback(async () => {
     if (!keys || !signer) return;
@@ -79,10 +82,11 @@ export default function ChannelMembersPanel({ channelId, onClose }: ChannelMembe
 
   const handleAdd = (member: MemberResult) => handleAddPubkey(member.pubkey);
 
-  const handleRemove = async (pubkey: string) => {
-    if (!keys || !signer) return;
+  const handleRemove = async () => {
+    if (!keys || !signer || !removeTarget) return;
+    setRemoving(true);
     try {
-      const res = await authFetch(signer, `/api/channels/${channelId}/members/${pubkey}`, {
+      const res = await authFetch(signer, `/api/channels/${channelId}/members/${removeTarget.pubkey}`, {
         method: "DELETE",
       });
       if (!res.ok) {
@@ -90,9 +94,11 @@ export default function ChannelMembersPanel({ channelId, onClose }: ChannelMembe
         throw new Error(data.error || `Failed to remove member (${res.status})`);
       }
       setError("");
+      setRemoveTarget(null);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Failed to remove member");
     } finally {
+      setRemoving(false);
       fetchMembers();
     }
   };
@@ -227,7 +233,7 @@ export default function ChannelMembersPanel({ channelId, onClose }: ChannelMembe
               {/* Remove button — owner/admin can remove non-owners; anyone can leave */}
               {(canManage && m.role !== "owner" && m.pubkey !== keys?.publicKey) && (
                 <button
-                  onClick={() => handleRemove(m.pubkey)}
+                  onClick={() => setRemoveTarget({ pubkey: m.pubkey, name: getDisplayName(m), isSelf: false })}
                   className="text-xs opacity-0 group-hover:opacity-100 cursor-pointer px-1.5 py-0.5 rounded"
                   style={{ color: "var(--text-muted)" }}
                   title="Remove member"
@@ -237,7 +243,7 @@ export default function ChannelMembersPanel({ channelId, onClose }: ChannelMembe
               )}
               {m.pubkey === keys?.publicKey && m.role !== "owner" && (
                 <button
-                  onClick={() => handleRemove(m.pubkey)}
+                  onClick={() => setRemoveTarget({ pubkey: m.pubkey, name: getDisplayName(m), isSelf: true })}
                   className="text-xs opacity-0 group-hover:opacity-100 cursor-pointer px-1.5 py-0.5 rounded"
                   style={{ color: "var(--text-muted)" }}
                   title="Leave channel"
@@ -249,6 +255,23 @@ export default function ChannelMembersPanel({ channelId, onClose }: ChannelMembe
           ))
         )}
       </div>
+
+      <ConfirmModal
+        open={!!removeTarget}
+        title={removeTarget?.isSelf ? "Leave channel" : "Remove member"}
+        message={
+          removeTarget?.isSelf
+            ? "Leave this channel? You'll need to be re-added to rejoin."
+            : removeTarget
+            ? `Remove ${removeTarget.name} from this channel?`
+            : undefined
+        }
+        confirmLabel={removeTarget?.isSelf ? "Leave" : "Remove"}
+        danger
+        busy={removing}
+        onConfirm={handleRemove}
+        onClose={() => setRemoveTarget(null)}
+      />
     </div>
   );
 }
