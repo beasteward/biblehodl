@@ -17,7 +17,7 @@ export default function Sidebar() {
 
   return (
     <div
-      className="w-72 flex flex-col shrink-0 overflow-hidden"
+      className="hidden md:flex w-72 flex-col shrink-0 overflow-hidden"
       style={{ background: "var(--bg-secondary)", borderRight: "1px solid var(--border)" }}
     >
       <div className="p-4 shrink-0" style={{ borderBottom: "1px solid var(--border)" }}>
