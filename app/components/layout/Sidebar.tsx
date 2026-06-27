@@ -3,7 +3,8 @@
 import { useAppStore } from "../../lib/store";
 import ChatSidebar from "../chat/ChatSidebar";
 
-export default function Sidebar() {
+// Inner content shared by the desktop rail and the mobile slide-in drawer.
+export function SidebarContent() {
   const currentView = useAppStore((s) => s.currentView);
   const calendarEvents = useAppStore((s) => s.calendarEvents);
 
@@ -16,10 +17,7 @@ export default function Sidebar() {
     .slice(0, 10);
 
   return (
-    <div
-      className="hidden md:flex w-72 flex-col shrink-0 overflow-hidden"
-      style={{ background: "var(--bg-secondary)", borderRight: "1px solid var(--border)" }}
-    >
+    <>
       <div className="p-4 shrink-0" style={{ borderBottom: "1px solid var(--border)" }}>
         <h2 className="text-lg font-semibold" style={{ color: "var(--text-primary)" }}>
           {currentView === "chat" && "Chat"}
@@ -92,6 +90,17 @@ export default function Sidebar() {
           </div>
         )}
       </div>
+    </>
+  );
+}
+
+export default function Sidebar() {
+  return (
+    <div
+      className="hidden md:flex w-72 flex-col shrink-0 overflow-hidden"
+      style={{ background: "var(--bg-secondary)", borderRight: "1px solid var(--border)" }}
+    >
+      <SidebarContent />
     </div>
   );
 }
