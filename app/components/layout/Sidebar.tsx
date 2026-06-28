@@ -3,6 +3,7 @@
 import { useAppStore } from "../../lib/store";
 import ChatSidebar from "../chat/ChatSidebar";
 import NotificationToggle from "../common/NotificationToggle";
+import InstallButton from "../common/InstallButton";
 
 // Inner content shared by the desktop rail and the mobile slide-in drawer.
 export function SidebarContent() {
@@ -92,8 +93,10 @@ export function SidebarContent() {
         )}
       </div>
 
-      {/* Per-user notification switch, always visible at the sidebar foot. */}
+      {/* Footer: Android one-tap install (renders only when installable) +
+          per-user notification switch. */}
       <div className="shrink-0">
+        <InstallButton />
         <NotificationToggle />
       </div>
     </>
