@@ -9,6 +9,7 @@ import { fetchProfile, normalizeReactionEmoji } from "./chat-service";
 import type { ActivityItem } from "./store";
 import { KIND_GIFT_WRAP, KIND_DM, KIND_REACTION, KIND_DELETE } from "./nostr";
 import { wrapDirectMessage, wrapRumorEvent, unwrapDirectMessage } from "./nip17";
+import { notifyLocal } from "./notifications";
 
 // ─── Send DM ───
 
@@ -223,6 +224,19 @@ function handleIncomingDM(
     created_at > boundary
   ) {
     store.incrementUnread(conversationId);
+
+    // Backgrounded-tab notification (no-op when the tab is focused or this is
+    // replayed backlog). Title = sender display name; body = message preview.
+    const profile = store.profiles[senderPubkey];
+    const senderName =
+      profile?.displayName || profile?.name || partnerPubkey.slice(0, 8) + "…";
+    void notifyLocal({
+      title: senderName,
+      body: content.slice(0, 140),
+      url: `/?view=chat&channel=${encodeURIComponent(conversationId)}`,
+      tag: conversationId,
+      createdAt: created_at,
+    });
   }
 
   if (!store.profiles[senderPubkey]) {

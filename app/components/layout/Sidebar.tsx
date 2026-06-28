@@ -2,6 +2,7 @@
 
 import { useAppStore } from "../../lib/store";
 import ChatSidebar from "../chat/ChatSidebar";
+import NotificationToggle from "../common/NotificationToggle";
 
 // Inner content shared by the desktop rail and the mobile slide-in drawer.
 export function SidebarContent() {
@@ -89,6 +90,11 @@ export function SidebarContent() {
             Admin panel — manage members and invites.
           </div>
         )}
+      </div>
+
+      {/* Per-user notification switch, always visible at the sidebar foot. */}
+      <div className="shrink-0">
+        <NotificationToggle />
       </div>
     </>
   );

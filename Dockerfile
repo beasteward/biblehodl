@@ -24,8 +24,9 @@ RUN addgroup -g 1001 -S nodejs && adduser -S nextjs -u 1001
 COPY --from=build /app/.next/standalone ./
 COPY --from=build /app/.next/static ./.next/static
 
-# Copy public dir if it exists (optional)
+# Copy public assets (PWA manifest, service worker, icons, offline page).
 RUN mkdir -p ./public
+COPY --from=build /app/public ./public
 
 # Copy prisma for runtime migrations — need full node_modules for prisma CLI
 COPY --from=build /app/prisma ./prisma

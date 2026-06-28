@@ -139,3 +139,22 @@ model Answer {
   @@index([sessionId])
   @@index([questionId])
 }
+
+// ─── Web Push (PWA notifications) ───
+
+// A browser/device push subscription bound to a member pubkey. One pubkey may
+// have many subscriptions (multiple devices/browsers). Keyed by the unique
+// push `endpoint`. Stores the standard Web Push keys (p256dh + auth) plus the
+// raw subscription JSON for convenience.
+model PushSubscription {
+  id        String   @id @default(cuid())
+  pubkey    String
+  endpoint  String   @unique
+  p256dh    String
+  auth      String
+  userAgent String   @default("")
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([pubkey])
+}
