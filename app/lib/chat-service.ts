@@ -8,6 +8,7 @@ import {
   KIND_METADATA,
   KIND_REACTION,
   KIND_DELETE,
+  isSystemChannelEvent,
 } from "./nostr";
 import { useAppStore } from "./store";
 import type { ActivityItem, Channel, ChatMessage, Profile, Reaction } from "./store";
@@ -277,6 +278,11 @@ export function subscribeToChannels() {
     (event) => {
       try {
         const meta = JSON.parse(event.content);
+        // Meeting rooms are also kind-40 channels (type: "meeting"); they live in
+        // the Meetings view and must never appear in the chat channel list, or
+        // their meeting-file/meeting-status system events would render as raw
+        // event objects in Chat history.
+        if (meta.type === "meeting") return;
         const channel: Channel = {
           id: event.id,
           name: meta.name || "Unnamed",
@@ -308,6 +314,10 @@ export function subscribeToChannelMessages(channelId: string) {
       },
     ],
     (event) => {
+      // Defensively skip app/system events (file shares, meeting status) so a
+      // raw JSON payload never renders as a chat bubble.
+      if (isSystemChannelEvent(event)) return;
+
       const msg: ChatMessage = {
         id: event.id,
         pubkey: event.pubkey,
@@ -358,6 +368,7 @@ export function subscribeToChannelUnread(myPubkey: string) {
     [{ kinds: [KIND_CHANNEL_MESSAGE], since }],
     (event) => {
       if (event.pubkey === myPubkey) return; // never count own messages
+      if (isSystemChannelEvent(event)) return; // system events aren't chat
 
       // NIP-28: root channel ref is the "e" tag marked "root" (or the bare one).
       const rootTag = event.tags.find(

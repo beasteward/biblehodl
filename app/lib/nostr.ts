@@ -26,6 +26,20 @@ export const KIND_CHANNEL_MUTE_USER = 44;
 // Regular event, p-tagged at the added user; content = {channelId, channelName}.
 export const KIND_CHANNEL_MEMBERSHIP = 9001;
 
+// `t` tag values that mark a kind-42 event as an app/system event (a file-share
+// link, a meeting status change, …) rather than a human chat message. These
+// carry a JSON payload that must NEVER be rendered as a chat bubble.
+export const SYSTEM_CHANNEL_EVENT_TAGS = new Set(["meeting-status", "meeting-file"]);
+
+/**
+ * True when a kind-42 channel/meeting event is an app system event rather than
+ * a human-typed message. Detected by its `t` tag so the raw JSON payload never
+ * surfaces in chat history (in a meeting room or, defensively, a chat channel).
+ */
+export function isSystemChannelEvent(event: { tags: string[][] }): boolean {
+  return event.tags.some((t) => t[0] === "t" && SYSTEM_CHANNEL_EVENT_TAGS.has(t[1]));
+}
+
 // NIP-25 Reactions
 export const KIND_REACTION = 7;
 

@@ -6,6 +6,7 @@ import { pool } from "./relay-pool";
 import {
   KIND_CHANNEL_CREATE,
   KIND_CHANNEL_MESSAGE,
+  isSystemChannelEvent,
 } from "./nostr";
 import { useAppStore } from "./store";
 import type { Meeting, ChatMessage } from "./store";
@@ -128,15 +129,19 @@ export function subscribeToMeetingMessages(meetingId: string) {
       },
     ],
     (event) => {
-      // Check for status update messages
-      try {
-        const parsed = JSON.parse(event.content);
-        if (parsed.type === "meeting-status") {
-          store.updateMeeting(meetingId, { status: parsed.status });
-          return;
+      // System events (status changes, file-share links) carry a `t` tag and a
+      // JSON payload. Apply any side effect (status update) but NEVER add them to
+      // chat history — members must not see a raw event object in the Chat tab.
+      if (isSystemChannelEvent(event)) {
+        try {
+          const parsed = JSON.parse(event.content);
+          if (parsed.type === "meeting-status") {
+            store.updateMeeting(meetingId, { status: parsed.status });
+          }
+        } catch {
+          // ignore malformed system event
         }
-      } catch {
-        // Not JSON — regular chat message
+        return;
       }
 
       const msg: ChatMessage = {
