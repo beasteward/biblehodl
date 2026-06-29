@@ -29,7 +29,11 @@ export const KIND_CHANNEL_MEMBERSHIP = 9001;
 // `t` tag values that mark a kind-42 event as an app/system event (a file-share
 // link, a meeting status change, …) rather than a human chat message. These
 // carry a JSON payload that must NEVER be rendered as a chat bubble.
-export const SYSTEM_CHANNEL_EVENT_TAGS = new Set(["meeting-status", "meeting-file"]);
+export const SYSTEM_CHANNEL_EVENT_TAGS = new Set([
+  "meeting-status",
+  "meeting-file",
+  "whiteboard-save",
+]);
 
 /**
  * True when a kind-42 channel/meeting event is an app system event rather than
