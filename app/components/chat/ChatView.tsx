@@ -14,6 +14,12 @@ import type { ChatMessage } from "../../lib/store";
 import { sendDirectMessage, sendDmReaction, retractDmReaction } from "../../lib/dm-service";
 import { retryMessage } from "../../lib/outbox";
 import ChannelMembersPanel from "./ChannelMembersPanel";
+import dynamic from "next/dynamic";
+import { channelCallRoom, dmCallRoom, useCallPresence, CALLS_ENABLED } from "../../lib/call-room";
+
+// LiveKit pulls in browser-only WebRTC; load the call overlay lazily (never on
+// SSR) so it only costs anything when a call is actually opened.
+const LiveCall = dynamic(() => import("../common/LiveCall"), { ssr: false });
 
 // Quick-reaction palette shown on message hover (Teams-style).
 const REACTION_EMOJIS = ["\u{1F44D}", "\u2764\uFE0F", "\u{1F602}", "\u{1F389}", "\u{1F62E}", "\u{1F622}", "\u{1F64F}"];
@@ -29,6 +35,7 @@ export default function ChatView() {
   const [input, setInput] = useState("");
   const [sending, setSending] = useState(false);
   const [showMembers, setShowMembers] = useState(false);
+  const [callOpen, setCallOpen] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
   const markChannelRead = useAppStore((s) => s.markChannelRead);
@@ -65,6 +72,22 @@ export default function ChatView() {
     }
     unknowns.forEach((pk) => fetchProfile(pk));
   }, [channelMessages, profiles]);
+
+  // Call presence for the active conversation. Channels and DMs each map to a
+  // deterministic LiveKit room; if a call is already running and I'm not in it,
+  // the header button reads "Join now" instead of "Meet now".
+  const callRoom = !activeChannelId
+    ? null
+    : isDM
+    ? dmCallRoom(keys?.publicKey, activeChannelId.replace("dm-", ""))
+    : channelCallRoom(activeChannelId);
+  const callPresence = useCallPresence(callRoom);
+  const joinable = callPresence.active && !callPresence.joined;
+
+  // Close the call overlay when switching conversations.
+  useEffect(() => {
+    setCallOpen(false);
+  }, [activeChannelId]);
 
   // Toggle a reaction on a message: retract if I already reacted with this
   // emoji, otherwise add it. Works on sent + received messages, in channels and
@@ -180,6 +203,25 @@ export default function ChatView() {
           <div className="text-xs" style={{ color: "var(--text-muted)" }}>
             {channelMessages.length} messages
           </div>
+          {CALLS_ENABLED && callRoom && (
+            <button
+              onClick={() => setCallOpen(true)}
+              className="text-sm cursor-pointer px-2.5 py-1 rounded flex items-center gap-1.5 font-medium"
+              style={{ background: joinable ? "#22c55e" : "var(--accent)", color: "white" }}
+              title={joinable ? "Join the call in progress" : "Start a call"}
+            >
+              <span>🎥</span>
+              <span>{joinable ? "Join now" : "Meet now"}</span>
+              {callPresence.active && callPresence.count > 0 && (
+                <span
+                  className="text-xs px-1.5 py-0.5 rounded-full leading-none"
+                  style={{ background: "rgba(255,255,255,0.25)" }}
+                >
+                  {callPresence.count}
+                </span>
+              )}
+            </button>
+          )}
           {!isDM && (
             <button
               onClick={() => setShowMembers(!showMembers)}
@@ -376,6 +418,13 @@ export default function ChatView() {
       <ChannelMembersPanel
         channelId={activeChannelId}
         onClose={() => setShowMembers(false)}
+      />
+    )}
+    {callOpen && callRoom && (
+      <LiveCall
+        room={callRoom}
+        title={isDM ? `Call \u00B7 ${getChannelDisplayName()}` : `# ${activeChannel.name}`}
+        onClose={() => setCallOpen(false)}
       />
     )}
     </div>
