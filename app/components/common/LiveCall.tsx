@@ -48,7 +48,12 @@ export default function LiveCall({ room, title, conversationId, isDM, onClose }:
   const signer = useAppStore((s) => s.signer);
   const [token, setToken] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [showChat, setShowChat] = useState(true);
+  // Open by default on desktop (docked side column), closed on mobile where the
+  // chat is a bottom-sheet overlay and shouldn't cover the video unprompted.
+  // Lazy init is safe: this component is dynamically imported with ssr:false.
+  const [showChat, setShowChat] = useState(
+    () => typeof window !== "undefined" && window.matchMedia("(min-width: 768px)").matches
+  );
 
   useEffect(() => {
     if (!signer) {
@@ -156,15 +161,33 @@ export default function LiveCall({ room, title, conversationId, isDM, onClose }:
             onError={(e) => setError(e.message)}
             style={{ height: "100%" }}
           >
-            <div className="flex h-full min-h-0">
+            <div className="relative flex h-full min-h-0">
               <CallStage />
               {showChat && (
-                <aside
-                  className="w-80 shrink-0 flex flex-col min-h-0"
-                  style={{ borderLeft: "1px solid var(--border)", background: "var(--bg-secondary)" }}
-                >
-                  <CallChat conversationId={conversationId} isDM={isDM} />
-                </aside>
+                <>
+                  {/* Mobile-only dimmed backdrop; tap to dismiss the sheet. */}
+                  <button
+                    aria-label="Close chat"
+                    onClick={() => setShowChat(false)}
+                    className="md:hidden absolute inset-0 z-10 bg-black/40"
+                  />
+                  <aside
+                    className="
+                      z-20 shrink-0 flex flex-col min-h-0
+                      absolute inset-x-0 bottom-0 h-[65%] rounded-t-2xl border-t shadow-2xl
+                      md:static md:inset-auto md:bottom-auto md:h-auto md:w-80
+                      md:rounded-none md:border-t-0 md:border-l md:shadow-none
+                      border-[color:var(--border)]
+                    "
+                    style={{ background: "var(--bg-secondary)" }}
+                  >
+                    {/* Grab handle — mobile bottom-sheet affordance only. */}
+                    <div className="md:hidden flex justify-center pt-2 pb-1 shrink-0">
+                      <div className="h-1 w-10 rounded-full" style={{ background: "var(--border)" }} />
+                    </div>
+                    <CallChat conversationId={conversationId} isDM={isDM} />
+                  </aside>
+                </>
               )}
             </div>
             <RoomAudioRenderer />
