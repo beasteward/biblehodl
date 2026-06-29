@@ -53,7 +53,7 @@ export async function saveWhiteboard(
     meetingId,
     name: safeName,
     blobSha256: blob.sha256,
-    blobUrl: blob.url,
+    blobUrl: blob.url.replace(/^http:\/\//i, "https://"),
     timestamp: Date.now(),
   };
 
@@ -162,7 +162,10 @@ export async function listWhiteboards(meetingId: string): Promise<WhiteboardSave
 
 export async function fetchWhiteboardSnapshot(meta: WhiteboardMeta): Promise<string | null> {
   try {
-    const url = meta.blobUrl || getBlobUrl(meta.blobSha256);
+    // Blossom reports http:// URLs (it sits behind Caddy's TLS and doesn't know
+    // it), which the browser blocks as mixed content on our https page. Force
+    // https so existing saved boards (whose stored blobUrl is http) still load.
+    const url = (meta.blobUrl || getBlobUrl(meta.blobSha256)).replace(/^http:\/\//i, "https://");
     const res = await fetch(url);
     if (!res.ok) return null;
     return await res.text();
