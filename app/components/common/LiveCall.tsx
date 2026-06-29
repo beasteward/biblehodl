@@ -1,32 +1,54 @@
 "use client";
 
-import { useEffect, useState } from "react";
-import { LiveKitRoom, VideoConference } from "@livekit/components-react";
+import { useEffect, useRef, useState } from "react";
+import {
+  LiveKitRoom,
+  GridLayout,
+  ParticipantTile,
+  ControlBar,
+  RoomAudioRenderer,
+  useTracks,
+} from "@livekit/components-react";
+import { Track } from "livekit-client";
 import "@livekit/components-styles";
 import { useAppStore } from "../../lib/store";
+import type { ChatMessage } from "../../lib/store";
 import { authFetch } from "../../lib/http-auth";
+import { sendChannelMessage } from "../../lib/chat-service";
+import { sendDirectMessage } from "../../lib/dm-service";
+import { retryMessage } from "../../lib/outbox";
 
 interface Props {
   room: string; // LiveKit room id
   title: string; // human label shown in the overlay header
+  conversationId: string; // channel id, or `dm-<pubkey>` for a DM
+  isDM: boolean;
   onClose: () => void; // close the overlay (and leave if connected)
 }
 
 // Build-time public URL of the community's own LiveKit server.
 const LIVEKIT_URL = process.env.NEXT_PUBLIC_LIVEKIT_URL;
 
+// Stable empty reference — returning a fresh [] from a zustand v5 selector on
+// every render trips an infinite re-render loop (React #185).
+const EMPTY_MESSAGES: ChatMessage[] = [];
+
 /**
  * Full-screen call overlay for chat-originated calls (channels + DMs).
  *
  * The user has already expressed intent by tapping "Meet now"/"Join now", so we
- * fetch a token and connect immediately — no second lobby. Audio-first (camera
- * off by default); video is one tap away from the in-room controls. Leaving the
- * call, an error, or the close button all dismiss the overlay.
+ * fetch a token and connect immediately. Audio-first (camera off by default).
+ *
+ * Crucially, the in-call chat IS the conversation's chat: the side panel renders
+ * and sends the same persisted Nostr channel/DM messages, so anything said
+ * during the call shows up in the conversation's normal Chat history (rather than
+ * LiveKit's ephemeral data-channel chat, which is disabled here).
  */
-export default function LiveCall({ room, title, onClose }: Props) {
+export default function LiveCall({ room, title, conversationId, isDM, onClose }: Props) {
   const signer = useAppStore((s) => s.signer);
   const [token, setToken] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [showChat, setShowChat] = useState(true);
 
   useEffect(() => {
     if (!signer) {
@@ -77,13 +99,26 @@ export default function LiveCall({ room, title, onClose }: Props) {
             Live call
           </span>
         </div>
-        <button
-          onClick={onClose}
-          className="text-sm px-3 py-1.5 rounded-lg font-medium shrink-0"
-          style={{ background: "var(--bg-tertiary)", color: "var(--text-secondary)" }}
-        >
-          ✕ Leave
-        </button>
+        <div className="flex items-center gap-2 shrink-0">
+          <button
+            onClick={() => setShowChat((v) => !v)}
+            className="text-sm px-3 py-1.5 rounded-lg font-medium"
+            style={{
+              background: showChat ? "var(--accent)" : "var(--bg-tertiary)",
+              color: showChat ? "white" : "var(--text-secondary)",
+            }}
+            title={showChat ? "Hide chat" : "Show chat"}
+          >
+            💬 Chat
+          </button>
+          <button
+            onClick={onClose}
+            className="text-sm px-3 py-1.5 rounded-lg font-medium"
+            style={{ background: "var(--bg-tertiary)", color: "var(--text-secondary)" }}
+          >
+            ✕ Leave
+          </button>
+        </div>
       </div>
 
       {/* Body */}
@@ -121,9 +156,155 @@ export default function LiveCall({ room, title, onClose }: Props) {
             onError={(e) => setError(e.message)}
             style={{ height: "100%" }}
           >
-            <VideoConference />
+            <div className="flex h-full min-h-0">
+              <CallStage />
+              {showChat && (
+                <aside
+                  className="w-80 shrink-0 flex flex-col min-h-0"
+                  style={{ borderLeft: "1px solid var(--border)", background: "var(--bg-secondary)" }}
+                >
+                  <CallChat conversationId={conversationId} isDM={isDM} />
+                </aside>
+              )}
+            </div>
+            <RoomAudioRenderer />
           </LiveKitRoom>
         )}
+      </div>
+    </div>
+  );
+}
+
+/**
+ * Video grid + controls, with LiveKit's built-in (ephemeral) chat disabled —
+ * the persisted conversation chat lives in the side panel instead.
+ */
+function CallStage() {
+  const tracks = useTracks(
+    [
+      { source: Track.Source.Camera, withPlaceholder: true },
+      { source: Track.Source.ScreenShare, withPlaceholder: false },
+    ],
+    { onlySubscribed: false }
+  );
+
+  return (
+    <div className="flex-1 flex flex-col min-h-0">
+      <div className="flex-1 min-h-0">
+        <GridLayout tracks={tracks} style={{ height: "100%" }}>
+          <ParticipantTile />
+        </GridLayout>
+      </div>
+      <ControlBar
+        controls={{ microphone: true, camera: true, screenShare: true, chat: false, leave: true, settings: false }}
+      />
+    </div>
+  );
+}
+
+/**
+ * Slim chat panel bound to the conversation's real messages. Sends through the
+ * exact same channel/DM paths as the main ChatView, so every message persists to
+ * the relay and appears in the conversation's Chat history.
+ */
+function CallChat({ conversationId, isDM }: { conversationId: string; isDM: boolean }) {
+  const messages = useAppStore((s) => s.messages[conversationId]) ?? EMPTY_MESSAGES;
+  const profiles = useAppStore((s) => s.profiles);
+  const keys = useAppStore((s) => s.keys);
+  const signer = useAppStore((s) => s.signer);
+  const [input, setInput] = useState("");
+  const [sending, setSending] = useState(false);
+  const endRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    endRef.current?.scrollIntoView({ behavior: "smooth" });
+  }, [messages.length]);
+
+  const displayName = (pubkey: string) => {
+    const p = profiles[pubkey];
+    return p?.displayName || p?.name || `${pubkey.slice(0, 8)}…`;
+  };
+
+  const send = async () => {
+    if (!input.trim() || !signer) return;
+    setSending(true);
+    try {
+      if (isDM) {
+        await sendDirectMessage(conversationId.replace("dm-", ""), input.trim(), signer);
+      } else {
+        await sendChannelMessage(conversationId, input.trim(), signer);
+      }
+      setInput("");
+    } catch (err) {
+      console.error("Failed to send from call:", err);
+    } finally {
+      setSending(false);
+    }
+  };
+
+  return (
+    <div className="flex flex-col h-full min-h-0">
+      <div className="px-3 py-2 text-xs font-semibold shrink-0" style={{ borderBottom: "1px solid var(--border)", color: "var(--text-muted)" }}>
+        In-call chat — saved to this conversation
+      </div>
+      <div className="flex-1 overflow-y-auto px-3 py-2 space-y-2">
+        {messages.length === 0 && (
+          <p className="text-xs text-center py-6" style={{ color: "var(--text-muted)" }}>
+            Messages you send here appear in the conversation history.
+          </p>
+        )}
+        {messages.map((msg) => {
+          const isMe = msg.pubkey === keys?.publicKey;
+          const time = new Date(msg.created_at * 1000).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+          return (
+            <div key={msg.id} className={`flex flex-col ${isMe ? "items-end" : "items-start"}`}>
+              <div className="flex items-baseline gap-1.5">
+                <span className="text-xs font-semibold" style={{ color: isMe ? "var(--accent-light)" : "var(--text-primary)" }}>
+                  {isMe ? "You" : displayName(msg.pubkey)}
+                </span>
+                <span className="text-[10px]" style={{ color: "var(--text-muted)" }}>{time}</span>
+              </div>
+              <p
+                className="text-sm rounded-lg px-2.5 py-1 mt-0.5 inline-block break-words max-w-full"
+                style={{ background: isMe ? "var(--accent)" : "var(--bg-tertiary)", color: isMe ? "white" : "var(--text-primary)" }}
+              >
+                {msg.content}
+              </p>
+              {isMe && msg.status === "sending" && (
+                <span className="text-[10px] mt-0.5" style={{ color: "var(--text-muted)" }}>Sending…</span>
+              )}
+              {isMe && msg.status === "failed" && (
+                <span className="text-[10px] mt-0.5" style={{ color: "#ef4444" }}>
+                  Failed ·{" "}
+                  <button onClick={() => retryMessage(msg.id)} className="underline hover:opacity-80">Retry</button>
+                </span>
+              )}
+            </div>
+          );
+        })}
+        <div ref={endRef} />
+      </div>
+      <div className="p-2 shrink-0" style={{ borderTop: "1px solid var(--border)" }}>
+        <div className="flex items-center gap-2 rounded-lg px-2.5 py-1.5" style={{ background: "var(--bg-tertiary)", border: "1px solid var(--border)" }}>
+          <input
+            type="text"
+            value={input}
+            onChange={(e) => setInput(e.target.value)}
+            onKeyDown={(e) => e.key === "Enter" && !e.shiftKey && send()}
+            placeholder="Message…"
+            className="flex-1 bg-transparent outline-none text-sm"
+            style={{ color: "var(--text-primary)" }}
+            disabled={sending}
+          />
+          <button
+            onClick={send}
+            disabled={!input.trim() || sending}
+            className="text-base cursor-pointer disabled:opacity-30"
+            style={{ color: "var(--accent-light)" }}
+          >
+            {sending ? "⏳" : "➤"}
+          </button>
+        </div>
       </div>
     </div>
   );
