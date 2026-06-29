@@ -3,7 +3,7 @@
 import { useState, useEffect, useRef } from "react";
 import { useAppStore } from "../../lib/store";
 import { uploadBlob, deleteBlob, getBlobUrl, type BlobDescriptor } from "../../lib/blossom";
-import { KIND_CHANNEL_MESSAGE } from "../../lib/nostr";
+import { KIND_CHANNEL_MESSAGE, KIND_DELETE } from "../../lib/nostr";
 import { pool } from "../../lib/relay-pool";
 import ConfirmModal from "../common/ConfirmModal";
 
@@ -47,7 +47,7 @@ export default function MeetingFiles({ meetingId }: Props) {
   const [uploading, setUploading] = useState(false);
   const [dragOver, setDragOver] = useState(false);
   const [error, setError] = useState("");
-  const [deleteTarget, setDeleteTarget] = useState<string | null>(null);
+  const [deleteTarget, setDeleteTarget] = useState<MeetingFile | null>(null);
   const [deleting, setDeleting] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -153,12 +153,34 @@ export default function MeetingFiles({ meetingId }: Props) {
   const handleDelete = async () => {
     if (!keys || !signer || !deleteTarget) return;
     setDeleting(true);
+    setError("");
+    const target = deleteTarget;
     try {
-      await deleteBlob(deleteTarget, signer);
-      setFiles((prev) => prev.filter((f) => f.blob.sha256 !== deleteTarget));
+      // Retract the Nostr link event (NIP-09 kind 5). The files tab reads these
+      // kind-42 meeting-file events from the relay, so without this the file
+      // resurrects on refresh. This is the real source of truth for the list.
+      const del = await signer.signEvent({
+        kind: KIND_DELETE,
+        content: "",
+        tags: [["e", target.eventId]],
+      });
+      await pool.publish(del);
+
+      // Best-effort blob removal from Blossom. Tolerate an already-deleted or
+      // missing blob (e.g. a failed/retried delete) so the operation still
+      // completes — the link retraction above is what removes it from the
+      // meeting, and a dangling blob is harmless.
+      try {
+        await deleteBlob(target.blob.sha256, signer);
+      } catch (err) {
+        console.warn("Blob delete skipped/failed:", err);
+      }
+
+      setFiles((prev) => prev.filter((f) => f.eventId !== target.eventId));
       setDeleteTarget(null);
     } catch (err) {
       console.error("Delete failed:", err);
+      setError(err instanceof Error ? err.message : "Delete failed");
     }
     setDeleting(false);
   };
@@ -288,7 +310,7 @@ export default function MeetingFiles({ meetingId }: Props) {
                     </a>
                     {file.uploadedBy === keys?.publicKey && (
                       <button
-                        onClick={() => setDeleteTarget(file.blob.sha256)}
+                        onClick={() => setDeleteTarget(file)}
                         className="text-xs px-2 py-1 rounded"
                         style={{ color: "var(--danger)" }}
                         title="Delete"
