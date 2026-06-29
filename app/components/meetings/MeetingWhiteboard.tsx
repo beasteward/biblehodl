@@ -2,7 +2,7 @@
 
 import { useEffect, useCallback, useRef, useState } from "react";
 import { createPortal } from "react-dom";
-import { Tldraw, type Editor } from "tldraw";
+import { Tldraw, getSnapshot, loadSnapshot, type Editor } from "tldraw";
 import "tldraw/tldraw.css";
 import { useAppStore } from "../../lib/store";
 import {
@@ -27,6 +27,7 @@ export default function MeetingWhiteboard({ meetingId }: Props) {
   const [saving, setSaving] = useState(false);
   const [loading, setLoading] = useState(true);
   const [hasChanges, setHasChanges] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   // The board currently loaded into the canvas. Saving updates this board in
   // place (retracting the previous version); with no active board, Save creates
@@ -91,7 +92,7 @@ export default function MeetingWhiteboard({ meetingId }: Props) {
         if (list.length > 0 && editorRef.current) {
           const snapshotJson = await fetchWhiteboardSnapshot(list[0].meta);
           if (cancelled || !editorRef.current || !snapshotJson) return;
-          editorRef.current.store.loadStoreSnapshot(JSON.parse(snapshotJson));
+          loadSnapshot(editorRef.current.store, JSON.parse(snapshotJson));
           setActiveBoard(list[0]);
           setHasChanges(false);
         }
@@ -134,7 +135,7 @@ export default function MeetingWhiteboard({ meetingId }: Props) {
     if (!keys || !signer || !editorRef.current) return;
     setSaving(true);
     try {
-      const snapshot = editorRef.current.store.getStoreSnapshot();
+      const snapshot = getSnapshot(editorRef.current.store);
       const snapshotJson = JSON.stringify(snapshot);
       const saved = await saveWhiteboard(meetingId, snapshotJson, boardName, signer);
 
@@ -195,15 +196,21 @@ export default function MeetingWhiteboard({ meetingId }: Props) {
   const handleLoadBoard = useCallback(async (save: WhiteboardSave) => {
     if (!editorRef.current) return;
     setLoadingBoard(true);
+    setError(null);
     try {
       const snapshotJson = await fetchWhiteboardSnapshot(save.meta);
-      if (!snapshotJson || !editorRef.current) return;
-      editorRef.current.store.loadStoreSnapshot(JSON.parse(snapshotJson));
+      if (!snapshotJson) {
+        setError("Could not fetch this whiteboard's data from the file server.");
+        return;
+      }
+      if (!editorRef.current) return;
+      loadSnapshot(editorRef.current.store, JSON.parse(snapshotJson));
       setActiveBoard(save);
       setHasChanges(false);
       setShowSaved(false);
     } catch (err) {
       console.error("[whiteboard] Failed to load board:", err);
+      setError(err instanceof Error ? err.message : "Failed to load whiteboard");
     } finally {
       setLoadingBoard(false);
     }
@@ -243,6 +250,11 @@ export default function MeetingWhiteboard({ meetingId }: Props) {
           {hasChanges && !loading && (
             <span className="text-xs font-medium" style={{ color: "#f59e0b" }}>
               • Unsaved changes
+            </span>
+          )}
+          {error && (
+            <span className="text-xs font-medium" style={{ color: "var(--danger)" }}>
+              {error}
             </span>
           )}
         </div>
