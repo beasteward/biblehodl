@@ -14,6 +14,7 @@ import type { ChatMessage } from "../../lib/store";
 import { sendDirectMessage, sendDmReaction, retractDmReaction } from "../../lib/dm-service";
 import { retryMessage } from "../../lib/outbox";
 import ChannelMembersPanel from "./ChannelMembersPanel";
+import EmojiPicker from "./EmojiPicker";
 import dynamic from "next/dynamic";
 import { channelCallRoom, dmCallRoom, useCallPresence, CALLS_ENABLED } from "../../lib/call-room";
 
@@ -37,6 +38,26 @@ export default function ChatView() {
   const [showMembers, setShowMembers] = useState(false);
   const [callOpen, setCallOpen] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const inputRef = useRef<HTMLInputElement>(null);
+
+  // Insert an emoji at the caret (or append if the field isn't focused), keep
+  // the rest of the text intact, then restore focus + caret after it.
+  const insertEmoji = (emoji: string) => {
+    const el = inputRef.current;
+    if (!el) {
+      setInput((v) => v + emoji);
+      return;
+    }
+    const start = el.selectionStart ?? input.length;
+    const end = el.selectionEnd ?? input.length;
+    const next = input.slice(0, start) + emoji + input.slice(end);
+    setInput(next);
+    requestAnimationFrame(() => {
+      el.focus();
+      const caret = start + emoji.length;
+      el.setSelectionRange(caret, caret);
+    });
+  };
 
   const markChannelRead = useAppStore((s) => s.markChannelRead);
   const activeChannel = channels.find((c) => c.id === activeChannelId);
@@ -388,7 +409,9 @@ export default function ChatView() {
           <button className="text-lg cursor-pointer" title="Attach file" style={{ color: "var(--text-muted)" }}>
             📎
           </button>
+          <EmojiPicker onSelect={insertEmoji} />
           <input
+            ref={inputRef}
             type="text"
             value={input}
             onChange={(e) => setInput(e.target.value)}
