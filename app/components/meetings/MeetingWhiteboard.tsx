@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useCallback, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import { Tldraw, type Editor } from "tldraw";
 import "tldraw/tldraw.css";
 import { useAppStore } from "../../lib/store";
@@ -36,6 +37,8 @@ export default function MeetingWhiteboard({ meetingId }: Props) {
   const [saves, setSaves] = useState<WhiteboardSave[]>([]);
   const [showSaved, setShowSaved] = useState(false);
   const [loadingBoard, setLoadingBoard] = useState(false);
+  const savedBtnRef = useRef<HTMLButtonElement>(null);
+  const [menuPos, setMenuPos] = useState<{ top: number; right: number }>({ top: 0, right: 0 });
 
   // Name modal (used for both Save and Rename)
   const [modalOpen, setModalOpen] = useState(false);
@@ -59,6 +62,20 @@ export default function MeetingWhiteboard({ meetingId }: Props) {
       console.warn("[whiteboard] Failed to list saves:", err);
     }
   }, [meetingId]);
+
+  // Toggle the saved-board menu. When opening, anchor it to the button's screen
+  // position so the portal (rendered at <body>) lines up under the button.
+  const toggleSaved = useCallback(() => {
+    setShowSaved((open) => {
+      if (!open) {
+        const rect = savedBtnRef.current?.getBoundingClientRect();
+        if (rect) setMenuPos({ top: rect.bottom + 4, right: window.innerWidth - rect.right });
+        refreshSaves();
+        return true;
+      }
+      return false;
+    });
+  }, [refreshSaves]);
 
   // Load saved whiteboard on mount (latest) + populate the saved-board list
   useEffect(() => {
@@ -199,11 +216,10 @@ export default function MeetingWhiteboard({ meetingId }: Props) {
 
   return (
     <div className="flex-1 flex flex-col min-h-0 relative">
-      {/* Toolbar — raised into its own stacking context so the Saved dropdown
-          paints above the tldraw canvas + its floating style panels. */}
+      {/* Toolbar */}
       <div
         className="flex items-center justify-between px-4 py-2 border-b"
-        style={{ borderColor: "var(--border)", background: "var(--bg-secondary)", position: "relative", zIndex: 40 }}
+        style={{ borderColor: "var(--border)", background: "var(--bg-secondary)" }}
       >
         <div className="flex items-center gap-3 min-w-0">
           <span className="text-sm font-medium" style={{ color: "var(--text-primary)" }}>
@@ -231,94 +247,16 @@ export default function MeetingWhiteboard({ meetingId }: Props) {
           )}
         </div>
 
-        <div className="flex items-center gap-2 relative">
+        <div className="flex items-center gap-2">
           <button
-            onClick={() => { setShowSaved((v) => !v); if (!showSaved) refreshSaves(); }}
+            ref={savedBtnRef}
+            onClick={toggleSaved}
             className="px-3 py-1.5 rounded text-sm font-medium"
             style={{ background: "var(--bg-tertiary)", color: "var(--text-primary)" }}
             title="Browse whiteboards saved to this meeting"
           >
             📂 Saved ({saves.length})
           </button>
-
-          {showSaved && (
-            <>
-              {/* Click-away backdrop (also covers tldraw panels) */}
-              <div
-                className="fixed inset-0"
-                style={{ zIndex: 9998 }}
-                onClick={() => setShowSaved(false)}
-              />
-              <div
-                className="absolute right-0 top-full mt-1 w-80 rounded-lg shadow-xl overflow-hidden"
-                style={{ background: "var(--bg-secondary)", border: "1px solid var(--border)", zIndex: 9999 }}
-              >
-                <div
-                  className="px-3 py-2 text-xs font-medium border-b"
-                  style={{ color: "var(--text-muted)", borderColor: "var(--border)" }}
-                >
-                  Saved whiteboards
-                </div>
-                <div className="max-h-80 overflow-y-auto">
-                  {saves.length === 0 ? (
-                    <div className="px-3 py-4 text-sm text-center" style={{ color: "var(--text-muted)" }}>
-                      No saved whiteboards yet
-                    </div>
-                  ) : (
-                    saves.map((s) => {
-                      const mine = s.pubkey === keys?.publicKey;
-                      const isActive = activeBoard?.eventId === s.eventId;
-                      return (
-                        <div
-                          key={s.eventId}
-                          className="flex items-center gap-2 px-3 py-2 group border-b"
-                          style={{
-                            borderColor: "var(--border)",
-                            background: isActive ? "var(--bg-tertiary)" : "transparent",
-                          }}
-                        >
-                          <button
-                            onClick={() => handleLoadBoard(s)}
-                            disabled={loadingBoard}
-                            className="flex-1 min-w-0 text-left disabled:opacity-50"
-                            title="Open this board for editing"
-                          >
-                            <div className="text-sm font-medium truncate" style={{ color: "var(--text-primary)" }}>
-                              {s.meta.name}{isActive ? " ·" : ""}
-                              {isActive && <span style={{ color: "var(--accent)" }}> editing</span>}
-                            </div>
-                            <div className="text-xs" style={{ color: "var(--text-muted)" }}>
-                              {getDisplayName(s.pubkey)} · {new Date(s.created_at * 1000).toLocaleString([], { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" })}
-                            </div>
-                          </button>
-                          {mine && (
-                            <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                              <button
-                                onClick={() => openRenameModal(s)}
-                                className="text-xs px-1.5 py-1 rounded"
-                                style={{ color: "var(--text-muted)" }}
-                                title="Rename"
-                              >
-                                ✏️
-                              </button>
-                              <button
-                                onClick={() => setDeleteTarget(s)}
-                                className="text-xs px-1.5 py-1 rounded"
-                                style={{ color: "var(--danger)" }}
-                                title="Delete"
-                              >
-                                🗑
-                              </button>
-                            </div>
-                          )}
-                        </div>
-                      );
-                    })
-                  )}
-                </div>
-              </div>
-            </>
-          )}
 
           <button
             onClick={openSaveModal}
@@ -339,6 +277,88 @@ export default function MeetingWhiteboard({ meetingId }: Props) {
       <div className="flex-1 relative" style={{ minHeight: 0 }}>
         <Tldraw onMount={handleMount} />
       </div>
+
+      {/* Saved-board browser — portaled to <body> with a max z-index so it paints
+          above tldraw's canvas + style picker (which are trapped inside the
+          contain:strict .tl-container) and its rows stay clickable. */}
+      {showSaved && typeof document !== "undefined" && createPortal(
+        <>
+          <div
+            className="fixed inset-0"
+            style={{ zIndex: 2147483000 }}
+            onClick={() => setShowSaved(false)}
+          />
+          <div
+            className="fixed w-80 rounded-lg shadow-xl overflow-hidden"
+            style={{ top: menuPos.top, right: menuPos.right, background: "var(--bg-secondary)", border: "1px solid var(--border)", zIndex: 2147483001 }}
+          >
+            <div
+              className="px-3 py-2 text-xs font-medium border-b"
+              style={{ color: "var(--text-muted)", borderColor: "var(--border)" }}
+            >
+              Saved whiteboards
+            </div>
+            <div className="max-h-80 overflow-y-auto">
+              {saves.length === 0 ? (
+                <div className="px-3 py-4 text-sm text-center" style={{ color: "var(--text-muted)" }}>
+                  No saved whiteboards yet
+                </div>
+              ) : (
+                saves.map((s) => {
+                  const mine = s.pubkey === keys?.publicKey;
+                  const isActive = activeBoard?.eventId === s.eventId;
+                  return (
+                    <div
+                      key={s.eventId}
+                      className="flex items-center gap-2 px-3 py-2 group border-b"
+                      style={{
+                        borderColor: "var(--border)",
+                        background: isActive ? "var(--bg-tertiary)" : "transparent",
+                      }}
+                    >
+                      <button
+                        onClick={() => handleLoadBoard(s)}
+                        disabled={loadingBoard}
+                        className="flex-1 min-w-0 text-left disabled:opacity-50"
+                        title="Open this board for editing"
+                      >
+                        <div className="text-sm font-medium truncate" style={{ color: "var(--text-primary)" }}>
+                          {s.meta.name}{isActive ? " ·" : ""}
+                          {isActive && <span style={{ color: "var(--accent)" }}> editing</span>}
+                        </div>
+                        <div className="text-xs" style={{ color: "var(--text-muted)" }}>
+                          {getDisplayName(s.pubkey)} · {new Date(s.created_at * 1000).toLocaleString([], { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" })}
+                        </div>
+                      </button>
+                      {mine && (
+                        <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                          <button
+                            onClick={() => openRenameModal(s)}
+                            className="text-xs px-1.5 py-1 rounded"
+                            style={{ color: "var(--text-muted)" }}
+                            title="Rename"
+                          >
+                            ✏️
+                          </button>
+                          <button
+                            onClick={() => setDeleteTarget(s)}
+                            className="text-xs px-1.5 py-1 rounded"
+                            style={{ color: "var(--danger)" }}
+                            title="Delete"
+                          >
+                            🗑
+                          </button>
+                        </div>
+                      )}
+                    </div>
+                  );
+                })
+              )}
+            </div>
+          </div>
+        </>,
+        document.body
+      )}
 
       {/* Name modal (Save / Rename) */}
       {modalOpen && (
