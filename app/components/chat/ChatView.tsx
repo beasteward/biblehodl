@@ -424,6 +424,8 @@ export default function ChatView() {
       <LiveCall
         room={callRoom}
         title={isDM ? `Call \u00B7 ${getChannelDisplayName()}` : `# ${activeChannel.name}`}
+        conversationId={activeChannelId!}
+        isDM={isDM}
         onClose={() => setCallOpen(false)}
       />
     )}
