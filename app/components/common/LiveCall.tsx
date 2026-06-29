@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   LiveKitRoom,
   GridLayout,
@@ -55,6 +55,27 @@ export default function LiveCall({ room, title, conversationId, isDM, onClose }:
     () => typeof window !== "undefined" && window.matchMedia("(min-width: 768px)").matches
   );
 
+  // Unread badge: count messages that land during the call while chat is closed.
+  const messages = useAppStore((s) => s.messages[conversationId]) ?? EMPTY_MESSAGES;
+  const myPubkey = useAppStore((s) => s.keys?.publicKey);
+  // Baseline = call mount time (seconds). Existing backlog is treated as read;
+  // only messages created after this moment can be "unread". Bumped to the newest
+  // message's timestamp whenever the chat is open (everything visible = read).
+  const lastReadRef = useRef(Math.floor(Date.now() / 1000));
+  const newestTs = useMemo(
+    () => messages.reduce((max, m) => (m.created_at > max ? m.created_at : max), 0),
+    [messages]
+  );
+  useEffect(() => {
+    if (showChat && newestTs > lastReadRef.current) lastReadRef.current = newestTs;
+  }, [showChat, newestTs]);
+  const unread = showChat
+    ? 0
+    : messages.reduce(
+        (n, m) => (m.created_at > lastReadRef.current && m.pubkey !== myPubkey ? n + 1 : n),
+        0
+      );
+
   useEffect(() => {
     if (!signer) {
       setError("You need to be unlocked to join the call.");
@@ -107,7 +128,7 @@ export default function LiveCall({ room, title, conversationId, isDM, onClose }:
         <div className="flex items-center gap-2 shrink-0">
           <button
             onClick={() => setShowChat((v) => !v)}
-            className="text-sm px-3 py-1.5 rounded-lg font-medium"
+            className="relative text-sm px-3 py-1.5 rounded-lg font-medium"
             style={{
               background: showChat ? "var(--accent)" : "var(--bg-tertiary)",
               color: showChat ? "white" : "var(--text-secondary)",
@@ -115,6 +136,15 @@ export default function LiveCall({ room, title, conversationId, isDM, onClose }:
             title={showChat ? "Hide chat" : "Show chat"}
           >
             💬 Chat
+            {unread > 0 && (
+              <span
+                aria-label={`${unread} unread message${unread === 1 ? "" : "s"}`}
+                className="absolute -top-1.5 -right-1.5 min-w-[18px] h-[18px] px-1 rounded-full text-[10px] font-bold flex items-center justify-center leading-none"
+                style={{ background: "var(--danger)", color: "white" }}
+              >
+                {unread > 99 ? "99+" : unread}
+              </span>
+            )}
           </button>
           <button
             onClick={onClose}
