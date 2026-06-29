@@ -13,6 +13,7 @@ import { useAppStore } from "./store";
 import type { ActivityItem, Channel, ChatMessage, Profile, Reaction } from "./store";
 import type { Signer } from "./signer";
 import { authFetch } from "./http-auth";
+import { notifyLocal } from "./notifications";
 import { sendOptimistic } from "./outbox";
 
 // ─── Channel Creation (kind 40) ───
@@ -390,6 +391,21 @@ export function subscribeToChannelUnread(myPubkey: string) {
       seen.add(event.id);
 
       s.incrementUnread(channelId);
+
+      // Backgrounded-tab notification (no-op when focused or replayed backlog).
+      const channelName = s.channels.find((c) => c.id === channelId)?.name || "New message";
+      const senderProfile = s.profiles[event.pubkey];
+      const senderName =
+        senderProfile?.displayName ||
+        senderProfile?.name ||
+        event.pubkey.slice(0, 8) + "\u2026";
+      void notifyLocal({
+        title: channelName,
+        body: `${senderName}: ${event.content.slice(0, 140)}`,
+        url: `/?view=chat&channel=${encodeURIComponent(channelId)}`,
+        tag: channelId,
+        createdAt: event.created_at,
+      });
     }
   );
 }

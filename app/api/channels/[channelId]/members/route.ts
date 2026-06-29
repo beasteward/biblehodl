@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { PrismaClient } from "@prisma/client";
 import { getPubkeyFromRequest } from "../../../../lib/auth";
 import { normalizePubkey } from "../../../../lib/pubkey";
+import { sendPushToPubkeys } from "../../../../lib/web-push";
 
 const prisma = new PrismaClient();
 
@@ -104,7 +105,19 @@ export async function POST(
     }
   }
 
+  // Fire a Web Push to everyone just added (fire-and-forget; the server can't
+  // read channel content, but "you were added" is a legitimate server event).
+  const addedPubkeys = added.map((a) => a.pubkey);
+  if (addedPubkeys.length) {
+    void sendPushToPubkeys(addedPubkeys, {
+      title: "Added to a channel",
+      body: "You've been added to a new channel in your community.",
+      url: `/?view=chat&channel=${encodeURIComponent(channelId)}`,
+      tag: `channel-add-${channelId}`,
+    }).catch(() => {});
+  }
+
   // Return the canonical hex pubkeys actually added so the client can publish
   // membership notifications to exactly those users.
-  return NextResponse.json({ added: added.length, pubkeys: added.map((a) => a.pubkey) });
+  return NextResponse.json({ added: added.length, pubkeys: addedPubkeys });
 }
