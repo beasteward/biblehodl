@@ -6,10 +6,13 @@ import "tldraw/tldraw.css";
 import { useAppStore } from "../../lib/store";
 import {
   saveWhiteboard,
+  renameWhiteboard,
+  deleteWhiteboard,
   listWhiteboards,
   fetchWhiteboardSnapshot,
   type WhiteboardSave,
 } from "../../lib/whiteboard-service";
+import ConfirmModal from "../common/ConfirmModal";
 
 interface Props {
   meetingId: string;
@@ -22,15 +25,27 @@ export default function MeetingWhiteboard({ meetingId }: Props) {
   const editorRef = useRef<Editor | null>(null);
   const [saving, setSaving] = useState(false);
   const [loading, setLoading] = useState(true);
-  const [lastSaved, setLastSaved] = useState<string | null>(null);
   const [hasChanges, setHasChanges] = useState(false);
 
-  // Saved-board browser + naming
+  // The board currently loaded into the canvas. Saving updates this board in
+  // place (retracting the previous version); with no active board, Save creates
+  // a new one.
+  const [activeBoard, setActiveBoard] = useState<WhiteboardSave | null>(null);
+
+  // Saved-board browser
   const [saves, setSaves] = useState<WhiteboardSave[]>([]);
   const [showSaved, setShowSaved] = useState(false);
-  const [nameModalOpen, setNameModalOpen] = useState(false);
-  const [boardName, setBoardName] = useState("");
   const [loadingBoard, setLoadingBoard] = useState(false);
+
+  // Name modal (used for both Save and Rename)
+  const [modalOpen, setModalOpen] = useState(false);
+  const [modalMode, setModalMode] = useState<"save" | "rename">("save");
+  const [boardName, setBoardName] = useState("");
+  const [renameTarget, setRenameTarget] = useState<WhiteboardSave | null>(null);
+
+  // Delete confirm
+  const [deleteTarget, setDeleteTarget] = useState<WhiteboardSave | null>(null);
+  const [deleting, setDeleting] = useState(false);
 
   const getDisplayName = (pubkey: string) => {
     const p = profiles[pubkey];
@@ -39,8 +54,7 @@ export default function MeetingWhiteboard({ meetingId }: Props) {
 
   const refreshSaves = useCallback(async () => {
     try {
-      const list = await listWhiteboards(meetingId);
-      setSaves(list);
+      setSaves(await listWhiteboards(meetingId));
     } catch (err) {
       console.warn("[whiteboard] Failed to list saves:", err);
     }
@@ -61,9 +75,7 @@ export default function MeetingWhiteboard({ meetingId }: Props) {
           const snapshotJson = await fetchWhiteboardSnapshot(list[0].meta);
           if (cancelled || !editorRef.current || !snapshotJson) return;
           editorRef.current.store.loadStoreSnapshot(JSON.parse(snapshotJson));
-          setLastSaved(
-            `${list[0].meta.name} · ${new Date(list[0].meta.timestamp).toLocaleTimeString()}`
-          );
+          setActiveBoard(list[0]);
           setHasChanges(false);
         }
       } catch (err) {
@@ -73,7 +85,6 @@ export default function MeetingWhiteboard({ meetingId }: Props) {
       }
     }
 
-    // Small delay to ensure editor is ready
     const timer = setTimeout(load, 500);
     return () => {
       cancelled = true;
@@ -81,35 +92,89 @@ export default function MeetingWhiteboard({ meetingId }: Props) {
     };
   }, [meetingId]);
 
-  // Open the name prompt (prefill with a sensible default)
+  // Open the Save name prompt. Prefill with the active board's name (so saving
+  // an opened board keeps its name) or a fresh default for a brand-new board.
   const openSaveModal = useCallback(() => {
     if (!keys || !signer || !editorRef.current) return;
+    setModalMode("save");
+    setRenameTarget(null);
     setBoardName(
-      `Board ${new Date().toLocaleDateString([], { month: "short", day: "numeric" })} ${new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}`
+      activeBoard?.meta.name ||
+        `Board ${new Date().toLocaleDateString([], { month: "short", day: "numeric" })} ${new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}`
     );
-    setNameModalOpen(true);
-  }, [keys, signer]);
+    setModalOpen(true);
+  }, [keys, signer, activeBoard]);
 
-  // Save to BLOSSOM under the chosen name
+  const openRenameModal = useCallback((board: WhiteboardSave) => {
+    setModalMode("rename");
+    setRenameTarget(board);
+    setBoardName(board.meta.name);
+    setModalOpen(true);
+  }, []);
+
+  // Save: create a new board, or update the active one in place.
   const handleSave = useCallback(async () => {
     if (!keys || !signer || !editorRef.current) return;
     setSaving(true);
     try {
       const snapshot = editorRef.current.store.getStoreSnapshot();
       const snapshotJson = JSON.stringify(snapshot);
-      const meta = await saveWhiteboard(meetingId, snapshotJson, boardName, signer);
-      setLastSaved(`${meta.name} · ${new Date(meta.timestamp).toLocaleTimeString()}`);
+      const saved = await saveWhiteboard(meetingId, snapshotJson, boardName, signer);
+
+      // Updating an existing board: retract the previous version so the list
+      // shows a single, current board rather than a duplicate.
+      if (activeBoard && activeBoard.eventId !== saved.eventId) {
+        try {
+          await deleteWhiteboard(activeBoard.eventId, signer);
+        } catch (err) {
+          console.warn("[whiteboard] Failed to retract previous version:", err);
+        }
+      }
+
+      setActiveBoard(saved);
       setHasChanges(false);
-      setNameModalOpen(false);
+      setModalOpen(false);
       refreshSaves();
     } catch (err) {
       console.error("[whiteboard] Failed to save:", err);
     } finally {
       setSaving(false);
     }
-  }, [keys, signer, meetingId, boardName, refreshSaves]);
+  }, [keys, signer, meetingId, boardName, activeBoard, refreshSaves]);
 
-  // Load a specific saved board into the canvas
+  // Rename a saved board (no canvas change).
+  const handleRename = useCallback(async () => {
+    if (!signer || !renameTarget) return;
+    setSaving(true);
+    try {
+      const renamed = await renameWhiteboard(meetingId, renameTarget, boardName, signer);
+      if (activeBoard?.eventId === renameTarget.eventId) setActiveBoard(renamed);
+      setModalOpen(false);
+      setRenameTarget(null);
+      refreshSaves();
+    } catch (err) {
+      console.error("[whiteboard] Failed to rename:", err);
+    } finally {
+      setSaving(false);
+    }
+  }, [signer, meetingId, renameTarget, boardName, activeBoard, refreshSaves]);
+
+  const handleDelete = useCallback(async () => {
+    if (!signer || !deleteTarget) return;
+    setDeleting(true);
+    try {
+      await deleteWhiteboard(deleteTarget.eventId, signer);
+      if (activeBoard?.eventId === deleteTarget.eventId) setActiveBoard(null);
+      setSaves((prev) => prev.filter((s) => s.eventId !== deleteTarget.eventId));
+      setDeleteTarget(null);
+    } catch (err) {
+      console.error("[whiteboard] Failed to delete:", err);
+    } finally {
+      setDeleting(false);
+    }
+  }, [signer, deleteTarget, activeBoard]);
+
+  // Load a specific saved board into the canvas and make it the active board.
   const handleLoadBoard = useCallback(async (save: WhiteboardSave) => {
     if (!editorRef.current) return;
     setLoadingBoard(true);
@@ -117,7 +182,7 @@ export default function MeetingWhiteboard({ meetingId }: Props) {
       const snapshotJson = await fetchWhiteboardSnapshot(save.meta);
       if (!snapshotJson || !editorRef.current) return;
       editorRef.current.store.loadStoreSnapshot(JSON.parse(snapshotJson));
-      setLastSaved(`${save.meta.name} · ${new Date(save.meta.timestamp).toLocaleTimeString()}`);
+      setActiveBoard(save);
       setHasChanges(false);
       setShowSaved(false);
     } catch (err) {
@@ -127,26 +192,20 @@ export default function MeetingWhiteboard({ meetingId }: Props) {
     }
   }, []);
 
-  // Track changes
   const handleMount = useCallback((editor: Editor) => {
     editorRef.current = editor;
-
-    editor.store.listen(
-      () => {
-        setHasChanges(true);
-      },
-      { source: "user", scope: "document" }
-    );
+    editor.store.listen(() => setHasChanges(true), { source: "user", scope: "document" });
   }, []);
 
   return (
     <div className="flex-1 flex flex-col min-h-0 relative">
-      {/* Toolbar */}
+      {/* Toolbar — raised into its own stacking context so the Saved dropdown
+          paints above the tldraw canvas + its floating style panels. */}
       <div
         className="flex items-center justify-between px-4 py-2 border-b"
-        style={{ borderColor: "var(--border)", background: "var(--bg-secondary)" }}
+        style={{ borderColor: "var(--border)", background: "var(--bg-secondary)", position: "relative", zIndex: 40 }}
       >
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-3 min-w-0">
           <span className="text-sm font-medium" style={{ color: "var(--text-primary)" }}>
             🎨 Whiteboard
           </span>
@@ -155,9 +214,14 @@ export default function MeetingWhiteboard({ meetingId }: Props) {
               Loading...
             </span>
           )}
-          {lastSaved && !loading && (
+          {!loading && activeBoard && (
+            <span className="text-xs truncate" style={{ color: "var(--text-muted)" }}>
+              Editing: <span style={{ color: "var(--text-primary)" }}>{activeBoard.meta.name}</span>
+            </span>
+          )}
+          {!loading && !activeBoard && (
             <span className="text-xs" style={{ color: "var(--text-muted)" }}>
-              Showing: {lastSaved}
+              New board (unsaved)
             </span>
           )}
           {hasChanges && !loading && (
@@ -168,7 +232,6 @@ export default function MeetingWhiteboard({ meetingId }: Props) {
         </div>
 
         <div className="flex items-center gap-2 relative">
-          {/* Saved boards browser */}
           <button
             onClick={() => { setShowSaved((v) => !v); if (!showSaved) refreshSaves(); }}
             className="px-3 py-1.5 rounded text-sm font-medium"
@@ -179,41 +242,82 @@ export default function MeetingWhiteboard({ meetingId }: Props) {
           </button>
 
           {showSaved && (
-            <div
-              className="absolute right-0 top-full mt-1 w-72 rounded-lg shadow-lg z-50 overflow-hidden"
-              style={{ background: "var(--bg-secondary)", border: "1px solid var(--border)" }}
-            >
+            <>
+              {/* Click-away backdrop (also covers tldraw panels) */}
               <div
-                className="px-3 py-2 text-xs font-medium border-b"
-                style={{ color: "var(--text-muted)", borderColor: "var(--border)" }}
+                className="fixed inset-0"
+                style={{ zIndex: 9998 }}
+                onClick={() => setShowSaved(false)}
+              />
+              <div
+                className="absolute right-0 top-full mt-1 w-80 rounded-lg shadow-xl overflow-hidden"
+                style={{ background: "var(--bg-secondary)", border: "1px solid var(--border)", zIndex: 9999 }}
               >
-                Saved whiteboards
+                <div
+                  className="px-3 py-2 text-xs font-medium border-b"
+                  style={{ color: "var(--text-muted)", borderColor: "var(--border)" }}
+                >
+                  Saved whiteboards
+                </div>
+                <div className="max-h-80 overflow-y-auto">
+                  {saves.length === 0 ? (
+                    <div className="px-3 py-4 text-sm text-center" style={{ color: "var(--text-muted)" }}>
+                      No saved whiteboards yet
+                    </div>
+                  ) : (
+                    saves.map((s) => {
+                      const mine = s.pubkey === keys?.publicKey;
+                      const isActive = activeBoard?.eventId === s.eventId;
+                      return (
+                        <div
+                          key={s.eventId}
+                          className="flex items-center gap-2 px-3 py-2 group border-b"
+                          style={{
+                            borderColor: "var(--border)",
+                            background: isActive ? "var(--bg-tertiary)" : "transparent",
+                          }}
+                        >
+                          <button
+                            onClick={() => handleLoadBoard(s)}
+                            disabled={loadingBoard}
+                            className="flex-1 min-w-0 text-left disabled:opacity-50"
+                            title="Open this board for editing"
+                          >
+                            <div className="text-sm font-medium truncate" style={{ color: "var(--text-primary)" }}>
+                              {s.meta.name}{isActive ? " ·" : ""}
+                              {isActive && <span style={{ color: "var(--accent)" }}> editing</span>}
+                            </div>
+                            <div className="text-xs" style={{ color: "var(--text-muted)" }}>
+                              {getDisplayName(s.pubkey)} · {new Date(s.created_at * 1000).toLocaleString([], { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" })}
+                            </div>
+                          </button>
+                          {mine && (
+                            <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                              <button
+                                onClick={() => openRenameModal(s)}
+                                className="text-xs px-1.5 py-1 rounded"
+                                style={{ color: "var(--text-muted)" }}
+                                title="Rename"
+                              >
+                                ✏️
+                              </button>
+                              <button
+                                onClick={() => setDeleteTarget(s)}
+                                className="text-xs px-1.5 py-1 rounded"
+                                style={{ color: "var(--danger)" }}
+                                title="Delete"
+                              >
+                                🗑
+                              </button>
+                            </div>
+                          )}
+                        </div>
+                      );
+                    })
+                  )}
+                </div>
               </div>
-              <div className="max-h-72 overflow-y-auto">
-                {saves.length === 0 ? (
-                  <div className="px-3 py-4 text-sm text-center" style={{ color: "var(--text-muted)" }}>
-                    No saved whiteboards yet
-                  </div>
-                ) : (
-                  saves.map((s) => (
-                    <button
-                      key={s.eventId}
-                      onClick={() => handleLoadBoard(s)}
-                      disabled={loadingBoard}
-                      className="w-full text-left px-3 py-2 hover:opacity-80 transition-opacity disabled:opacity-50 border-b"
-                      style={{ borderColor: "var(--border)" }}
-                    >
-                      <div className="text-sm font-medium truncate" style={{ color: "var(--text-primary)" }}>
-                        {s.meta.name}
-                      </div>
-                      <div className="text-xs" style={{ color: "var(--text-muted)" }}>
-                        {getDisplayName(s.pubkey)} · {new Date(s.created_at * 1000).toLocaleString([], { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" })}
-                      </div>
-                    </button>
-                  ))
-                )}
-              </div>
-            </div>
+            </>
           )}
 
           <button
@@ -226,7 +330,7 @@ export default function MeetingWhiteboard({ meetingId }: Props) {
             }}
             title="Save this whiteboard to the community file server, linked to this meeting"
           >
-            {saving ? "Saving..." : "💾 Save"}
+            {saving ? "Saving..." : activeBoard ? "💾 Save" : "💾 Save new"}
           </button>
         </div>
       </div>
@@ -236,12 +340,12 @@ export default function MeetingWhiteboard({ meetingId }: Props) {
         <Tldraw onMount={handleMount} />
       </div>
 
-      {/* Name-on-save modal */}
-      {nameModalOpen && (
+      {/* Name modal (Save / Rename) */}
+      {modalOpen && (
         <div
-          className="absolute inset-0 z-[60] flex items-center justify-center"
-          style={{ background: "rgba(0,0,0,0.5)" }}
-          onClick={() => !saving && setNameModalOpen(false)}
+          className="absolute inset-0 flex items-center justify-center"
+          style={{ background: "rgba(0,0,0,0.5)", zIndex: 10000 }}
+          onClick={() => !saving && setModalOpen(false)}
         >
           <div
             className="w-80 rounded-lg p-4"
@@ -249,24 +353,26 @@ export default function MeetingWhiteboard({ meetingId }: Props) {
             onClick={(e) => e.stopPropagation()}
           >
             <h3 className="text-sm font-semibold mb-1" style={{ color: "var(--text-primary)" }}>
-              Save whiteboard
+              {modalMode === "rename" ? "Rename whiteboard" : activeBoard ? "Save whiteboard" : "Save new whiteboard"}
             </h3>
             <p className="text-xs mb-3" style={{ color: "var(--text-muted)" }}>
-              Saved to this community&apos;s file server and linked to this meeting. Everyone in the meeting can open it from 📂 Saved.
+              {modalMode === "rename"
+                ? "Give this saved board a new name."
+                : "Saved to this community's file server and linked to this meeting. Everyone in the meeting can open it from 📂 Saved."}
             </p>
             <input
               type="text"
               autoFocus
               value={boardName}
               onChange={(e) => setBoardName(e.target.value)}
-              onKeyDown={(e) => e.key === "Enter" && handleSave()}
+              onKeyDown={(e) => e.key === "Enter" && (modalMode === "rename" ? handleRename() : handleSave())}
               placeholder="Whiteboard name"
               className="w-full px-3 py-2 rounded text-sm outline-none mb-3"
               style={{ background: "var(--bg-tertiary)", color: "var(--text-primary)", border: "1px solid var(--border)" }}
             />
             <div className="flex justify-end gap-2">
               <button
-                onClick={() => setNameModalOpen(false)}
+                onClick={() => setModalOpen(false)}
                 disabled={saving}
                 className="px-3 py-1.5 rounded text-sm font-medium disabled:opacity-50"
                 style={{ background: "var(--bg-tertiary)", color: "var(--text-muted)" }}
@@ -274,17 +380,28 @@ export default function MeetingWhiteboard({ meetingId }: Props) {
                 Cancel
               </button>
               <button
-                onClick={handleSave}
+                onClick={modalMode === "rename" ? handleRename : handleSave}
                 disabled={saving}
                 className="px-4 py-1.5 rounded text-sm font-medium disabled:opacity-50"
                 style={{ background: "var(--accent)", color: "white" }}
               >
-                {saving ? "Saving..." : "Save"}
+                {saving ? "Saving..." : modalMode === "rename" ? "Rename" : "Save"}
               </button>
             </div>
           </div>
         </div>
       )}
+
+      <ConfirmModal
+        open={!!deleteTarget}
+        title="Delete whiteboard"
+        message={`Delete "${deleteTarget?.meta.name ?? ""}"? This removes it for everyone in the meeting and cannot be undone.`}
+        confirmLabel="Delete"
+        danger
+        busy={deleting}
+        onConfirm={handleDelete}
+        onClose={() => setDeleteTarget(null)}
+      />
     </div>
   );
 }

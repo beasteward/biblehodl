@@ -8,7 +8,7 @@
 // history of saved whiteboards rather than a single overwritten snapshot.
 
 import { pool } from "./relay-pool";
-import { KIND_CHANNEL_MESSAGE } from "./nostr";
+import { KIND_CHANNEL_MESSAGE, KIND_DELETE } from "./nostr";
 import type { Signer } from "./signer";
 import { uploadBlob, getBlobUrl } from "./blossom";
 
@@ -35,7 +35,7 @@ export async function saveWhiteboard(
   snapshotJson: string,
   name: string,
   signer: Signer
-): Promise<WhiteboardMeta> {
+): Promise<WhiteboardSave> {
   const safeName = name.trim() || "Untitled board";
 
   // Create a File from the JSON snapshot
@@ -67,7 +67,51 @@ export async function saveWhiteboard(
   const event = await signer.signEvent({ kind: KIND_CHANNEL_MESSAGE, content, tags });
   await pool.publish(event);
 
-  return meta;
+  return { meta, eventId: event.id, pubkey: event.pubkey, created_at: event.created_at };
+}
+
+// ─── Rename a saved board (republish same blob under a new name, retract old) ───
+//
+// The blob is reused as-is; we publish a fresh whiteboard-save event with the
+// new name and then NIP-09-delete the previous link event so the list shows a
+// single, renamed board. Only the original author can do this (NIP-09 deletion
+// is author-scoped).
+
+export async function renameWhiteboard(
+  meetingId: string,
+  prev: WhiteboardSave,
+  newName: string,
+  signer: Signer
+): Promise<WhiteboardSave> {
+  const meta: WhiteboardMeta = {
+    type: "whiteboard-save",
+    meetingId,
+    name: newName.trim() || "Untitled board",
+    blobSha256: prev.meta.blobSha256,
+    blobUrl: prev.meta.blobUrl,
+    timestamp: Date.now(),
+  };
+  const content = JSON.stringify(meta);
+  const tags: string[][] = [
+    ["e", meetingId, "", "root"],
+    ["t", "whiteboard-save"],
+    ["x", prev.meta.blobSha256],
+  ];
+  const event = await signer.signEvent({ kind: KIND_CHANNEL_MESSAGE, content, tags });
+  await pool.publish(event);
+  await deleteWhiteboard(prev.eventId, signer);
+  return { meta, eventId: event.id, pubkey: event.pubkey, created_at: event.created_at };
+}
+
+// ─── Delete a saved board (retract its link event via NIP-09) ───
+
+export async function deleteWhiteboard(eventId: string, signer: Signer): Promise<void> {
+  const del = await signer.signEvent({
+    kind: KIND_DELETE,
+    content: "",
+    tags: [["e", eventId]],
+  });
+  await pool.publish(del);
 }
 
 // ─── List every saved whiteboard for a meeting (latest first) ───
