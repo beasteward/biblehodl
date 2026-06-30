@@ -537,13 +537,17 @@ export default function BibleView() {
       {showBookmarks ? (
         <div className="flex-1 overflow-y-auto p-4">
           <div className="max-w-2xl mx-auto">
-            <div className="flex items-center justify-between mb-3">
-              <p className="text-xs" style={{ color: "var(--text-muted)" }}>
+            <div className="flex items-center justify-between gap-3 mb-3">
+              <button
+                onClick={() => setShowBookmarks(false)}
+                className="shrink-0 px-3 py-1.5 rounded-md text-sm font-medium flex items-center gap-1.5"
+                style={{ background: "var(--bg-tertiary)", color: "var(--text-primary)", border: "1px solid var(--border)" }}
+              >
+                ← Back to reading
+              </button>
+              <p className="text-xs text-right" style={{ color: "var(--text-muted)" }}>
                 {bibleBookmarks.length} bookmark{bibleBookmarks.length !== 1 ? "s" : ""} · synced via your relay
               </p>
-              <button onClick={() => setShowBookmarks(false)} className="text-sm" style={{ color: "var(--accent-light)" }}>
-                Done
-              </button>
             </div>
             {bibleBookmarks.length === 0 ? (
               <p className="text-center py-8" style={{ color: "var(--text-muted)" }}>
