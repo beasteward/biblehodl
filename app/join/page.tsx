@@ -64,6 +64,13 @@ export default function JoinPage() {
     return () => clearTimeout(timer);
   }, []);
 
+  // Pre-fill the invite code from an emailed link (e.g. /join?invite=abc123).
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const code = new URLSearchParams(window.location.search).get("invite");
+    if (code) setInviteCode(code.trim());
+  }, []);
+
   const handleNip07 = async () => {
     try {
       setKeyError("");

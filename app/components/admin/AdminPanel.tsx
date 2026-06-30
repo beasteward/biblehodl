@@ -22,9 +22,16 @@ interface InviteRow {
   createdBy: string;
   usedBy: string | null;
   usedAt: string | null;
+  sentTo: string | null;
+  sentAt: string | null;
   expiresAt: string;
   createdAt: string;
   team: { name: string };
+}
+
+function joinUrlFor(code: string): string {
+  const origin = typeof window !== "undefined" ? window.location.origin : "";
+  return `${origin}/join?invite=${encodeURIComponent(code)}`;
 }
 
 export default function AdminPanel() {
@@ -37,6 +44,17 @@ export default function AdminPanel() {
   const [error, setError] = useState("");
   const [removeTarget, setRemoveTarget] = useState<{ id: string; name: string } | null>(null);
   const [removing, setRemoving] = useState(false);
+  const [emailEnabled, setEmailEnabled] = useState(false);
+  const [copiedId, setCopiedId] = useState<string | null>(null);
+  // Per-row email compose state (which invite row has its form open + field values)
+  const [emailForId, setEmailForId] = useState<string | null>(null);
+  const [emailTo, setEmailTo] = useState("");
+  const [emailName, setEmailName] = useState("");
+  const [emailBusy, setEmailBusy] = useState(false);
+  const [emailErr, setEmailErr] = useState("");
+  // Create-and-email field at the top of the tab
+  const [createEmail, setCreateEmail] = useState("");
+  const [creating, setCreating] = useState(false);
 
   const fetchMembers = useCallback(async () => {
     if (!signer) return;
@@ -56,6 +74,7 @@ export default function AdminPanel() {
     }
     const data = await res.json();
     setInvites(data.invites);
+    setEmailEnabled(Boolean(data.emailEnabled));
   }, [signer]);
 
   useEffect(() => {
@@ -86,12 +105,68 @@ export default function AdminPanel() {
 
   const handleCreateInvite = async () => {
     if (!signer) return;
+    setCreating(true);
+    const wantEmail = createEmail.trim();
     const res = await authFetch(signer, "/api/admin/invites", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(wantEmail ? { email: wantEmail } : {}),
     });
-    if (res.ok) fetchInvites();
-    else alert("Failed to create invite");
+    setCreating(false);
+    if (res.ok) {
+      const data = await res.json().catch(() => ({}));
+      if (wantEmail && data && data.emailed === false) {
+        alert(`Invite created, but email failed: ${data.emailError || "unknown error"}. You can copy the link or retry from the row.`);
+      }
+      setCreateEmail("");
+      fetchInvites();
+    } else {
+      const data = await res.json().catch(() => ({}));
+      alert(data.error === "email_not_configured" ? "Email is not configured on this server." : "Failed to create invite");
+    }
+  };
+
+  const handleCopyLink = async (inv: InviteRow) => {
+    try {
+      await navigator.clipboard.writeText(joinUrlFor(inv.code));
+      setCopiedId(inv.id);
+      setTimeout(() => setCopiedId((c) => (c === inv.id ? null : c)), 1800);
+    } catch {
+      alert(joinUrlFor(inv.code));
+    }
+  };
+
+  const openEmailForm = (inv: InviteRow) => {
+    setEmailForId(inv.id);
+    setEmailTo(inv.sentTo || "");
+    setEmailName("");
+    setEmailErr("");
+  };
+
+  const handleSendEmail = async (inv: InviteRow) => {
+    if (!signer) return;
+    const to = emailTo.trim();
+    if (!to) {
+      setEmailErr("Enter an email address");
+      return;
+    }
+    setEmailBusy(true);
+    setEmailErr("");
+    const res = await authFetch(signer, "/api/admin/invites/email", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ inviteId: inv.id, toEmail: to, recipientName: emailName.trim() || undefined }),
+    });
+    setEmailBusy(false);
+    if (res.ok) {
+      setEmailForId(null);
+      setEmailTo("");
+      setEmailName("");
+      fetchInvites();
+    } else {
+      const data = await res.json().catch(() => ({}));
+      setEmailErr(data.error === "email_not_configured" ? "Email is not configured on this server." : (data.error || "Failed to send email"));
+    }
   };
 
   const tabStyle = (active: boolean) => ({
@@ -175,27 +250,49 @@ export default function AdminPanel() {
 
         {tab === "invites" && (
           <div>
-            <button
-              onClick={handleCreateInvite}
-              className="mb-4 px-4 py-2 rounded-lg text-sm font-medium cursor-pointer"
-              style={{ background: "var(--accent)", color: "white" }}
-            >
-              + Create Invite
-            </button>
+            <div className="mb-4 flex flex-wrap items-center gap-2">
+              {emailEnabled && (
+                <input
+                  type="email"
+                  value={createEmail}
+                  onChange={(e) => setCreateEmail(e.target.value)}
+                  placeholder="Email to send to (optional)"
+                  className="px-3 py-2 rounded-lg text-sm outline-none"
+                  style={{ background: "var(--bg-secondary)", border: "1px solid var(--border)", color: "var(--text-primary)", minWidth: 240 }}
+                />
+              )}
+              <button
+                onClick={handleCreateInvite}
+                disabled={creating}
+                className="px-4 py-2 rounded-lg text-sm font-medium cursor-pointer disabled:opacity-50"
+                style={{ background: "var(--accent)", color: "white" }}
+              >
+                {creating ? "Creating…" : emailEnabled && createEmail.trim() ? "+ Create & Email" : "+ Create Invite"}
+              </button>
+            </div>
+            {!emailEnabled && (
+              <p className="mb-4 text-xs" style={{ color: "var(--text-muted)" }}>
+                Email sending isn&apos;t configured on this server — use Copy Link to share invites. (Operator: set SMTP_* env vars to enable email.)
+              </p>
+            )}
             <div className="space-y-3">
-              {invites.map((inv) => (
+              {invites.map((inv) => {
+                const used = !!inv.usedBy;
+                const expired = !used && new Date(inv.expiresAt) < new Date();
+                const active = !used && !expired;
+                return (
                 <div
                   key={inv.id}
                   className="p-4 rounded-lg"
                   style={{ background: "var(--bg-secondary)", border: "1px solid var(--border)" }}
                 >
-                  <div className="flex items-center gap-3">
+                  <div className="flex items-center gap-3 flex-wrap">
                     <code className="text-sm font-bold" style={{ color: "var(--accent-light)" }}>{inv.code}</code>
-                    {inv.usedBy ? (
+                    {used ? (
                       <span className="text-xs px-2 py-0.5 rounded-full" style={{ background: "var(--bg-tertiary)", color: "var(--text-muted)" }}>
                         Used
                       </span>
-                    ) : new Date(inv.expiresAt) < new Date() ? (
+                    ) : expired ? (
                       <span className="text-xs px-2 py-0.5 rounded-full" style={{ background: "var(--danger)", color: "white" }}>
                         Expired
                       </span>
@@ -204,13 +301,83 @@ export default function AdminPanel() {
                         Active
                       </span>
                     )}
+                    {inv.sentTo && (
+                      <span className="text-xs px-2 py-0.5 rounded-full" style={{ background: "var(--bg-tertiary)", color: "var(--text-secondary)" }}>
+                        ✉ {inv.sentTo}
+                      </span>
+                    )}
                   </div>
+
+                  {active && (
+                    <div className="flex items-center gap-2 mt-3 flex-wrap">
+                      <button
+                        onClick={() => handleCopyLink(inv)}
+                        className="px-3 py-1.5 rounded text-xs cursor-pointer"
+                        style={{ background: "var(--bg-tertiary)", color: "var(--text-primary)" }}
+                      >
+                        {copiedId === inv.id ? "Copied ✓" : "📋 Copy link"}
+                      </button>
+                      {emailEnabled && (
+                        <button
+                          onClick={() => (emailForId === inv.id ? setEmailForId(null) : openEmailForm(inv))}
+                          className="px-3 py-1.5 rounded text-xs cursor-pointer"
+                          style={{ background: "var(--bg-tertiary)", color: "var(--text-primary)" }}
+                        >
+                          {inv.sentTo ? "✉ Resend" : "✉ Email"}
+                        </button>
+                      )}
+                    </div>
+                  )}
+
+                  {emailEnabled && active && emailForId === inv.id && (
+                    <div className="mt-3 p-3 rounded-lg" style={{ background: "var(--bg-primary)", border: "1px solid var(--border)" }}>
+                      <div className="flex flex-col gap-2">
+                        <input
+                          type="email"
+                          value={emailTo}
+                          onChange={(e) => setEmailTo(e.target.value)}
+                          placeholder="recipient@example.com"
+                          className="px-3 py-2 rounded text-sm outline-none"
+                          style={{ background: "var(--bg-secondary)", border: "1px solid var(--border)", color: "var(--text-primary)" }}
+                        />
+                        <input
+                          type="text"
+                          value={emailName}
+                          onChange={(e) => setEmailName(e.target.value)}
+                          placeholder="Recipient name (optional)"
+                          className="px-3 py-2 rounded text-sm outline-none"
+                          style={{ background: "var(--bg-secondary)", border: "1px solid var(--border)", color: "var(--text-primary)" }}
+                        />
+                        {emailErr && <p className="text-xs" style={{ color: "var(--danger)" }}>{emailErr}</p>}
+                        <div className="flex items-center gap-2">
+                          <button
+                            onClick={() => handleSendEmail(inv)}
+                            disabled={emailBusy}
+                            className="px-3 py-1.5 rounded text-xs font-medium cursor-pointer disabled:opacity-50"
+                            style={{ background: "var(--accent)", color: "white" }}
+                          >
+                            {emailBusy ? "Sending…" : "Send invite email"}
+                          </button>
+                          <button
+                            onClick={() => setEmailForId(null)}
+                            className="px-3 py-1.5 rounded text-xs cursor-pointer"
+                            style={{ background: "var(--bg-tertiary)", color: "var(--text-secondary)" }}
+                          >
+                            Cancel
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+                  )}
+
                   <div className="text-xs mt-2" style={{ color: "var(--text-muted)" }}>
                     Expires: {new Date(inv.expiresAt).toLocaleDateString()}
                     {inv.usedBy && ` · Used by: ${inv.usedBy.slice(0, 12)}...`}
+                    {inv.sentAt && ` · Emailed ${new Date(inv.sentAt).toLocaleDateString()}`}
                   </div>
                 </div>
-              ))}
+                );
+              })}
               {invites.length === 0 && (
                 <p style={{ color: "var(--text-muted)" }}>No invites yet. Create one to get started.</p>
               )}

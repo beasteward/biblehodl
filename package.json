@@ -15,6 +15,7 @@
     "livekit-client": "^2.20.0",
     "livekit-server-sdk": "^2.15.5",
     "next": "^16.1.6",
+    "nodemailer": "^6.10.1",
     "nostr-tools": "^2.11.0",
     "prisma": "^6.19.2",
     "react": "^19.0.0",
@@ -26,6 +27,7 @@
   "devDependencies": {
     "@tailwindcss/postcss": "^4.0.0",
     "@types/node": "^22.0.0",
+    "@types/nodemailer": "^8.0.1",
     "@types/react": "^19.0.0",
     "@types/react-dom": "^19.0.0",
     "@types/web-push": "^3.6.4",
