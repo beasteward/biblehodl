@@ -13,6 +13,18 @@ export interface BibleLocation {
   chapter: number;
 }
 
+// A relay-published Bible bookmark (one entry in the member's NIP-51
+// `bible-bookmarks` set). `ref` is the canonical, parseable reference string
+// (e.g. "John 3:16" or "John 3:16-18") and doubles as the identity key.
+export interface BibleBookmark {
+  ref: string;
+  book: string;
+  chapter: number;
+  verse: number;
+  endVerse?: number;
+  snippet?: string;
+}
+
 export interface MemberProfile {
   firstName: string;
   lastName: string;
@@ -133,6 +145,13 @@ interface AppState {
   // Null = not yet checked; gates whether the Bible nav item renders at all.
   bibleEnabled: boolean | null;
   setBibleEnabled: (enabled: boolean) => void;
+  // Relay-published bookmarks (NIP-51). Hydrated fresh from the relay each
+  // session — never persisted, so the relay stays the source of truth.
+  // `bibleBookmarksAt` is the created_at of the newest list event seen, used to
+  // ignore stale replays that would otherwise clobber a newer list.
+  bibleBookmarks: BibleBookmark[];
+  bibleBookmarksAt: number;
+  setBibleBookmarks: (list: BibleBookmark[], updatedAt: number) => void;
 
   // Chat
   channels: Channel[];
@@ -233,6 +252,8 @@ export const useAppStore = create<AppState>()(
           activeMeetingId: null,
           profiles: {},
           bibleLocation: null,
+          bibleBookmarks: [],
+          bibleBookmarksAt: 0,
         }),
       isRegistered: false,
       setIsRegistered: (isRegistered) => set({ isRegistered }),
@@ -248,6 +269,10 @@ export const useAppStore = create<AppState>()(
       setBibleLocation: (bibleLocation) => set({ bibleLocation }),
       bibleEnabled: null,
       setBibleEnabled: (bibleEnabled) => set({ bibleEnabled }),
+      bibleBookmarks: [],
+      bibleBookmarksAt: 0,
+      setBibleBookmarks: (bibleBookmarks, bibleBookmarksAt) =>
+        set({ bibleBookmarks, bibleBookmarksAt }),
 
       // Chat
       channels: [],

@@ -13,6 +13,7 @@ import {
 } from "../../lib/chat-service";
 import { subscribeToDMs } from "../../lib/dm-service";
 import { subscribeToCalendarEvents } from "../../lib/calendar-service";
+import { subscribeToBibleBookmarks } from "../../lib/bible-bookmark-service";
 import { initMeetings } from "../../lib/meeting-service";
 import ActivityBar from "./ActivityBar";
 import Sidebar, { SidebarContent } from "./Sidebar";
@@ -99,6 +100,7 @@ export default function AppShell() {
         subscribeToReactions(keys.publicKey);
         subscribeToChannelMembership(keys.publicKey);
         subscribeToCalendarEvents([keys.publicKey]);
+        subscribeToBibleBookmarks(keys.publicKey);
         initMeetings();
       }
     });

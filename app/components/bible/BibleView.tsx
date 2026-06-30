@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { useAppStore } from "../../lib/store";
+import { useAppStore, type BibleBookmark } from "../../lib/store";
 import {
   fetchBooks,
   fetchChapters,
@@ -14,6 +14,7 @@ import {
   type BibleVerse,
 } from "../../lib/bible-service";
 import ShareVerseModal from "./ShareVerseModal";
+import { toggleBibleBookmark, removeBibleBookmark } from "../../lib/bible-bookmark-service";
 
 // Module-level stable defaults so store/derived selectors never return a fresh
 // reference each render (avoids the React #185 unstable-snapshot trap).
@@ -23,6 +24,7 @@ export default function BibleView() {
   const signer = useAppStore((s) => s.signer);
   const bibleLocation = useAppStore((s) => s.bibleLocation);
   const setBibleLocation = useAppStore((s) => s.setBibleLocation);
+  const bibleBookmarks = useAppStore((s) => s.bibleBookmarks);
 
   const [books, setBooks] = useState<BibleBook[]>(EMPTY_BOOKS);
   const [booksError, setBooksError] = useState<string | null>(null);
@@ -47,6 +49,10 @@ export default function BibleView() {
   const [query, setQuery] = useState("");
   const [results, setResults] = useState<BibleVerse[] | null>(null);
   const [searching, setSearching] = useState(false);
+
+  // Bookmarks browser + in-flight toggle guard.
+  const [showBookmarks, setShowBookmarks] = useState(false);
+  const [bookmarkBusy, setBookmarkBusy] = useState(false);
 
   const verseRefs = useRef<Record<number, HTMLDivElement | null>>({});
   const resumedRef = useRef(false);
@@ -167,6 +173,65 @@ export default function BibleView() {
     const chosen = verses.filter((v) => selectedVerses.has(v.verse));
     if (chosen.length === 0) return;
     setShareTarget({ book: selectedBook, chapter: selectedChapter, verses: chosen });
+  };
+
+  // Build the bookmark for the current selection (single verse or contiguous range).
+  const selectionBookmark = useCallback((): BibleBookmark | null => {
+    if (!selectedBook || selectedChapter == null) return null;
+    const chosen = verses.filter((v) => selectedVerses.has(v.verse)).sort((a, b) => a.verse - b.verse);
+    if (chosen.length === 0) return null;
+    const first = chosen[0];
+    const last = chosen[chosen.length - 1];
+    const ref = formatRef(selectedBook, selectedChapter, first.verse, last.verse);
+    const snippet = first.text.length > 160 ? first.text.slice(0, 157) + "…" : first.text;
+    return {
+      ref,
+      book: selectedBook,
+      chapter: selectedChapter,
+      verse: first.verse,
+      endVerse: last.verse !== first.verse ? last.verse : undefined,
+      snippet,
+    };
+  }, [selectedBook, selectedChapter, verses, selectedVerses]);
+
+  const selectionRef = useMemo(() => {
+    const bm = selectionBookmark();
+    return bm?.ref ?? null;
+  }, [selectionBookmark]);
+
+  const selectionBookmarked = selectionRef != null && bibleBookmarks.some((b) => b.ref === selectionRef);
+
+  const onToggleBookmark = async () => {
+    if (!signer || bookmarkBusy) return;
+    const bm = selectionBookmark();
+    if (!bm) return;
+    setBookmarkBusy(true);
+    try {
+      await toggleBibleBookmark(signer, bm);
+    } finally {
+      setBookmarkBusy(false);
+    }
+  };
+
+  // Verse numbers in the current chapter that begin a saved bookmark.
+  const bookmarkedStartVerses = useMemo(() => {
+    const set = new Set<number>();
+    if (!selectedBook || selectedChapter == null) return set;
+    for (const b of bibleBookmarks) {
+      if (b.book === selectedBook && b.chapter === selectedChapter) set.add(b.verse);
+    }
+    return set;
+  }, [bibleBookmarks, selectedBook, selectedChapter]);
+
+  const openBookmark = (b: BibleBookmark) => {
+    setShowBookmarks(false);
+    openBook(b.book);
+    openChapter(b.book, b.chapter, b.verse);
+  };
+
+  const onRemoveBookmark = async (ref: string) => {
+    if (!signer) return;
+    await removeBibleBookmark(signer, ref);
   };
 
   const onResultClick = (v: BibleVerse) => {
@@ -356,6 +421,11 @@ export default function BibleView() {
                       >
                         {v.verse}
                       </button>
+                      {bookmarkedStartVerses.has(v.verse) && (
+                        <span className="mr-1" title="Bookmarked" style={{ color: "var(--accent-light)" }}>
+                          ★
+                        </span>
+                      )}
                       <span style={{ color: "var(--text-primary)" }}>{v.text}</span>
                     </div>
                   );
@@ -414,17 +484,86 @@ export default function BibleView() {
             </button>
           </div>
         )}
-        <input
-          value={query}
-          onChange={(e) => setQuery(e.target.value)}
-          placeholder="Search the full text…"
-          className="w-full px-3 py-2 rounded-md text-sm outline-none"
-          style={{ background: "var(--bg-tertiary)", color: "var(--text-primary)", border: "1px solid var(--border)" }}
-        />
+        <div className="flex items-center gap-2">
+          <input
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            placeholder="Search the full text…"
+            className="flex-1 px-3 py-2 rounded-md text-sm outline-none"
+            style={{ background: "var(--bg-tertiary)", color: "var(--text-primary)", border: "1px solid var(--border)" }}
+          />
+          <button
+            onClick={() => setShowBookmarks((v) => !v)}
+            className="shrink-0 px-3 py-2 rounded-md text-sm font-medium flex items-center gap-1.5"
+            style={{
+              background: showBookmarks ? "var(--accent)" : "var(--bg-tertiary)",
+              color: showBookmarks ? "#fff" : "var(--text-secondary)",
+              border: "1px solid var(--border)",
+            }}
+            title="Saved bookmarks"
+          >
+            ★ <span className="hidden sm:inline">Bookmarks</span>
+            {bibleBookmarks.length > 0 && (
+              <span
+                className="min-w-[18px] h-[18px] flex items-center justify-center rounded-full text-[10px] font-bold px-1"
+                style={{ background: showBookmarks ? "rgba(255,255,255,0.25)" : "var(--accent)", color: "#fff" }}
+              >
+                {bibleBookmarks.length}
+              </span>
+            )}
+          </button>
+        </div>
       </div>
 
-      {/* Body: either search results, or navigator + reader */}
-      {results !== null || searching ? (
+      {/* Body: bookmarks browser, search results, or navigator + reader */}
+      {showBookmarks ? (
+        <div className="flex-1 overflow-y-auto p-4">
+          <div className="max-w-2xl mx-auto">
+            <div className="flex items-center justify-between mb-3">
+              <p className="text-xs" style={{ color: "var(--text-muted)" }}>
+                {bibleBookmarks.length} bookmark{bibleBookmarks.length !== 1 ? "s" : ""} · synced via your relay
+              </p>
+              <button onClick={() => setShowBookmarks(false)} className="text-sm" style={{ color: "var(--accent-light)" }}>
+                Done
+              </button>
+            </div>
+            {bibleBookmarks.length === 0 ? (
+              <p className="text-center py-8" style={{ color: "var(--text-muted)" }}>
+                No bookmarks yet. Select verses while reading and tap “☆ Bookmark”.
+              </p>
+            ) : (
+              <div className="space-y-2">
+                {bibleBookmarks.map((b) => (
+                  <div
+                    key={b.ref}
+                    className="flex items-start gap-2 p-3 rounded-lg"
+                    style={{ background: "var(--bg-tertiary)" }}
+                  >
+                    <button onClick={() => openBookmark(b)} className="flex-1 text-left min-w-0">
+                      <div className="text-xs font-semibold mb-1" style={{ color: "var(--accent-light)" }}>
+                        {b.ref}
+                      </div>
+                      {b.snippet && (
+                        <div className="text-sm truncate" style={{ color: "var(--text-secondary)" }}>
+                          {b.snippet}
+                        </div>
+                      )}
+                    </button>
+                    <button
+                      onClick={() => onRemoveBookmark(b.ref)}
+                      className="shrink-0 w-7 h-7 rounded-md flex items-center justify-center"
+                      style={{ color: "var(--text-muted)" }}
+                      title="Remove bookmark"
+                    >
+                      ✕
+                    </button>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        </div>
+      ) : results !== null || searching ? (
         <div className="flex-1 overflow-y-auto p-4">
           {searching ? (
             <p style={{ color: "var(--text-muted)" }}>Searching…</p>
@@ -471,6 +610,18 @@ export default function BibleView() {
           <span className="text-sm" style={{ color: "var(--text-secondary)" }}>
             {selectedVerses.size} verse{selectedVerses.size !== 1 ? "s" : ""} selected
           </span>
+          <button
+            onClick={onToggleBookmark}
+            disabled={bookmarkBusy}
+            className="px-3 py-1.5 rounded-full text-sm font-medium disabled:opacity-50"
+            style={{
+              background: selectionBookmarked ? "var(--accent)" : "var(--bg-active)",
+              color: selectionBookmarked ? "#fff" : "var(--text-primary)",
+            }}
+            title={selectionBookmarked ? "Remove bookmark" : "Save bookmark"}
+          >
+            {selectionBookmarked ? "★ Saved" : "☆ Bookmark"}
+          </button>
           <button
             onClick={shareSelected}
             className="px-3 py-1.5 rounded-full text-sm font-medium"
