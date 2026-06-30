@@ -14,7 +14,7 @@ import {
   type BibleVerse,
 } from "../../lib/bible-service";
 import ShareVerseModal from "./ShareVerseModal";
-import { toggleBibleBookmark, removeBibleBookmark } from "../../lib/bible-bookmark-service";
+import { addBibleBookmark, removeBibleBookmark } from "../../lib/bible-bookmark-service";
 import { parseScriptureRef } from "../../lib/scripture-ref";
 
 // Module-level stable defaults so store/derived selectors never return a fresh
@@ -193,43 +193,33 @@ export default function BibleView() {
     setShareTarget({ book: selectedBook, chapter: selectedChapter, verses: chosen });
   };
 
-  // Build the bookmark for the current selection (single verse or contiguous range).
-  const selectionBookmark = useCallback((): BibleBookmark | null => {
-    if (!selectedBook || selectedChapter == null) return null;
-    const chosen = verses.filter((v) => selectedVerses.has(v.verse)).sort((a, b) => a.verse - b.verse);
-    if (chosen.length === 0) return null;
-    const first = chosen[0];
-    const last = chosen[chosen.length - 1];
-    const ref = formatRef(selectedBook, selectedChapter, first.verse, last.verse);
-    const snippet = first.text.length > 160 ? first.text.slice(0, 157) + "…" : first.text;
-    return {
-      ref,
-      book: selectedBook,
-      chapter: selectedChapter,
-      verse: first.verse,
-      endVerse: last.verse !== first.verse ? last.verse : undefined,
-      snippet,
-    };
-  }, [selectedBook, selectedChapter, verses, selectedVerses]);
-
-  const selectionRef = useMemo(() => {
-    const bm = selectionBookmark();
-    return bm?.ref ?? null;
-  }, [selectionBookmark]);
-
-  const selectionBookmarked = selectionRef != null && bibleBookmarks.some((b) => b.ref === selectionRef);
-
-  const onToggleBookmark = async () => {
-    if (!signer || bookmarkBusy) return;
-    const bm = selectionBookmark();
-    if (!bm) return;
-    setBookmarkBusy(true);
-    try {
-      await toggleBibleBookmark(signer, bm);
-    } finally {
-      setBookmarkBusy(false);
-    }
-  };
+  // Toggle a single-verse bookmark directly from the reader (the ☆/★ on each verse).
+  const onToggleVerseBookmark = useCallback(
+    async (v: BibleVerse) => {
+      if (!signer || bookmarkBusy || !selectedBook || selectedChapter == null) return;
+      setBookmarkBusy(true);
+      try {
+        const existing = bibleBookmarks.find(
+          (b) => b.book === selectedBook && b.chapter === selectedChapter && b.verse === v.verse
+        );
+        if (existing) {
+          await removeBibleBookmark(signer, existing.ref);
+        } else {
+          const snippet = v.text.length > 160 ? v.text.slice(0, 157) + "…" : v.text;
+          await addBibleBookmark(signer, {
+            ref: formatRef(selectedBook, selectedChapter, v.verse),
+            book: selectedBook,
+            chapter: selectedChapter,
+            verse: v.verse,
+            snippet,
+          });
+        }
+      } finally {
+        setBookmarkBusy(false);
+      }
+    },
+    [signer, bookmarkBusy, selectedBook, selectedChapter, bibleBookmarks]
+  );
 
   // Verse numbers in the current chapter that begin a saved bookmark.
   const bookmarkedStartVerses = useMemo(() => {
@@ -408,6 +398,9 @@ export default function BibleView() {
               </div>
             ) : (
               <div className="max-w-2xl mx-auto leading-relaxed" style={{ fontSize: `${fontScale}rem` }}>
+                <p className="text-xs mb-4 pb-3 text-center" style={{ color: "var(--text-muted)", borderBottom: "1px solid var(--border)" }}>
+                  Tap ☆ to bookmark a verse · tap a verse number to select &amp; share
+                </p>
                 {verses.map((v) => {
                   const isSelected = selectedVerses.has(v.verse);
                   return (
@@ -429,21 +422,29 @@ export default function BibleView() {
                     >
                       <button
                         onClick={() => toggleVerse(v.verse)}
-                        className="mr-1.5 font-semibold align-super rounded px-1"
+                        className="mr-1 font-semibold align-super rounded px-1"
                         style={{
                           fontSize: "0.7em",
                           color: isSelected ? "#fff" : "var(--accent-light)",
                           background: isSelected ? "var(--accent)" : "transparent",
                         }}
-                        title="Tap to select for sharing"
+                        title="Tap to select this verse (for sharing)"
                       >
                         {v.verse}
                       </button>
-                      {bookmarkedStartVerses.has(v.verse) && (
-                        <span className="mr-1" title="Bookmarked" style={{ color: "var(--accent-light)" }}>
-                          ★
-                        </span>
-                      )}
+                      <button
+                        onClick={() => onToggleVerseBookmark(v)}
+                        disabled={bookmarkBusy}
+                        className="mr-1.5 align-super disabled:opacity-50"
+                        style={{
+                          fontSize: "0.78em",
+                          color: "var(--accent-light)",
+                          opacity: bookmarkedStartVerses.has(v.verse) ? 1 : 0.4,
+                        }}
+                        title={bookmarkedStartVerses.has(v.verse) ? "Remove bookmark" : "Bookmark this verse"}
+                      >
+                        {bookmarkedStartVerses.has(v.verse) ? "★" : "☆"}
+                      </button>
                       <span style={{ color: "var(--text-primary)" }}>{v.text}</span>
                     </div>
                   );
@@ -551,7 +552,7 @@ export default function BibleView() {
             </div>
             {bibleBookmarks.length === 0 ? (
               <p className="text-center py-8" style={{ color: "var(--text-muted)" }}>
-                No bookmarks yet. Select verses while reading and tap “☆ Bookmark”.
+                No bookmarks yet. While reading, tap the ☆ next to any verse to save it here. Bookmarks sync across your devices via your relay.
               </p>
             ) : (
               <div className="space-y-2">
@@ -632,18 +633,6 @@ export default function BibleView() {
           <span className="text-sm" style={{ color: "var(--text-secondary)" }}>
             {selectedVerses.size} verse{selectedVerses.size !== 1 ? "s" : ""} selected
           </span>
-          <button
-            onClick={onToggleBookmark}
-            disabled={bookmarkBusy}
-            className="px-3 py-1.5 rounded-full text-sm font-medium disabled:opacity-50"
-            style={{
-              background: selectionBookmarked ? "var(--accent)" : "var(--bg-active)",
-              color: selectionBookmarked ? "#fff" : "var(--text-primary)",
-            }}
-            title={selectionBookmarked ? "Remove bookmark" : "Save bookmark"}
-          >
-            {selectionBookmarked ? "★ Saved" : "☆ Bookmark"}
-          </button>
           <button
             onClick={shareSelected}
             className="px-3 py-1.5 rounded-full text-sm font-medium"
