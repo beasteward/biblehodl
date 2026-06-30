@@ -1,11 +1,13 @@
-# Bible Reader — Architecture & Design
+# Bible Reader — Architecture & Implementation
 
-Adds a **📖 Bible** reading feature to BibleHodl, backed by the
+A **📖 Bible** feature for BibleHodl, backed by the
 [CPDV-Bible API](https://github.com/beasteward/CPDV-Bible) (Catholic Public
-Domain Version — 73 books, ~35.8k verses), already deployed at
+Domain Version — 73 books, ~35.8k verses), deployed at
 `https://cpdv-bible-production.up.railway.app`.
 
-This document is the design proposal. Nothing here is shipped yet.
+**Status: shipped & live on biblehodl.com.** Phases 1, 1.5, 2 and 3 are all
+deployed. The only deferred item is an automated daily-verse bot (see §7). This
+document reflects the as-built system.
 
 ---
 
@@ -15,32 +17,31 @@ This document is the design proposal. Nothing here is shipped yet.
   full-text search, verse-of-the-day.
 - **Fits the existing app shell** — it's just another `View` (like Calendar,
   Files, Games), member-gated like everything else.
-- **Self-sovereign feel** — the value-add over a generic Bible app is the
-  *community* layer: share passages into chat, bookmark via Nostr, tie reading
-  plans into the existing calendar. (Phase 2+.)
+- **Self-sovereign community layer** — the value over a generic Bible app: share
+  passages into chat, bookmark via Nostr (relay-published), reading plans on the
+  calendar, and in-chat scripture links.
 - **Don't leak the CPDV API key to the browser.** The key is a server secret.
 - **Be cheap on the upstream.** CPDV text is immutable public-domain data —
   cache hard, hit Railway rarely.
 
-### What the upstream gives us (verified against the live deployment)
+### Upstream contract (verified live)
 
 - Base: `/api/v1`. Auth: **`X-API-Key` header** on *every* endpoint (`/health`
   included → 401 without it). Bearer is rejected.
-- Response envelope: `{ "status": "ok", "data": {...}, "meta": {...} }`.
-- Endpoints: `/books`, `/books/:book`, `/books/:book/chapters`,
-  `/books/:book/:chapter`, `/books/:book/:chapter/:verse`,
-  `/books/:book/:chapter/:start-:end`, `/search?q=`, `/random`,
-  `/verse-of-the-day`, `/testaments`, `/stats`, `/health`.
-- Book names are case-insensitive with aliases (`gen`, `1sam`, `sos`, `rev`…).
-
-> Note: `.env.example` already reserves `CPDV_API_URL` / `CPDV_API_KEY`. This
-> design fills in those slots.
+- Response envelope: `{ "status": "ok", "data": ..., "meta"?: ... }`.
+- `/books` returns each book with `{ name, key, testament: "OT"|"NT",
+  chapterCount, verseCount }` — testament grouping needs no extra call.
+- Other endpoints used: `/books/:book/chapters`, `/books/:book/:chapter`,
+  `/books/:book/:chapter/:verse`, `/books/:book/:chapter/:start-:end`,
+  `/search?q=`, `/verse-of-the-day`, `/random`.
+- Book names are case-insensitive with aliases (`gen`, `1sam`, `sos`, `rev`…),
+  so the proxy can forward human references without normalizing them first.
 
 ---
 
 ## 2. High-level architecture
 
-Browser never talks to CPDV directly. A thin **Backend-for-Frontend (BFF)
+The browser never talks to CPDV directly. A thin **Backend-for-Frontend (BFF)
 proxy** in our Next.js app sits in the middle:
 
 ```
@@ -62,9 +63,13 @@ Why the proxy instead of calling Railway from the client:
 4. **No CORS / mixed-content surprises** — same-origin `/api/bible/*`.
 5. **One seam** — if CPDV's shape or host changes, only the proxy changes.
 
-This mirrors the pattern already used for LiveKit presence
-(`app/api/livekit/room/route.ts`): NIP-98 → Prisma member lookup → upstream call,
-and "feature not configured ⇒ degrade gracefully" rather than erroring.
+This mirrors the LiveKit presence route (`app/api/livekit/room/route.ts`):
+NIP-98 → Prisma member lookup → upstream call, and "feature not configured ⇒
+degrade gracefully" rather than erroring.
+
+The **community features** (share, bookmarks, reading plans, chat links) never
+touch the upstream — CPDV is a read-only text source; that layer lives entirely
+in Nostr + our app.
 
 ---
 
@@ -72,67 +77,53 @@ and "feature not configured ⇒ degrade gracefully" rather than erroring.
 
 ### 3.1 Shared upstream client — `app/lib/cpdv.ts`
 
-A single server-only module that owns the upstream contract:
+Server-only module that owns the upstream contract, the `CPDV_API_KEY` secret,
+the cache policy, and the shared auth gate. Key exports:
 
-```ts
-// app/lib/cpdv.ts  (server-only; imports never reach the client bundle)
-const BASE = process.env.CPDV_API_URL;          // e.g. https://cpdv-bible-production.up.railway.app
-const KEY  = process.env.CPDV_API_KEY;           // X-API-Key secret
+- `isBibleConfigured()` — `Boolean(CPDV_API_URL && CPDV_API_KEY)`.
+- `cpdv<T>(path, { revalidate?, noStore? })` — fetches `${BASE}/api/v1${path}`
+  with the `X-API-Key` header. `revalidate: false` (default) ⇒ cache the payload
+  in Next's Data Cache indefinitely; verse-of-the-day passes `revalidate: 3600`;
+  random passes `noStore`. Throws a typed `CpdvError(status)` on
+  misconfiguration / non-2xx / bad envelope.
+- `cachedJson(data, cacheControl?)` and `bibleErrorResponse(err)` — response
+  helpers (the latter maps `CpdvError` → 404 / 503 / 502).
+- `requireBibleMember(request)` — the gate: `getPubkeyFromRequest` (NIP-98) →
+  `prisma.member.findFirst({ where: { pubkey } })`. Returns `{ pubkey }` or
+  `{ response }` (401 unauth / 403 non-member) to return immediately.
 
-export function isBibleConfigured() { return Boolean(BASE && KEY); }
-
-export async function cpdv<T>(
-  path: string,                                  // e.g. "/books/genesis/1"
-  opts: { revalidate?: number | false } = {}
-): Promise<T> {
-  if (!BASE || !KEY) throw new BibleNotConfigured();
-  const res = await fetch(`${BASE}/api/v1${path}`, {
-    headers: { "X-API-Key": KEY },
-    // Immutable text → cache forever; VOTD/random override per-call.
-    next: { revalidate: opts.revalidate ?? false }, // false ⇒ force-cache
-  });
-  if (!res.ok) throw new CpdvError(res.status);
-  return res.json() as Promise<T>;
-}
-```
-
-- `revalidate: false` ⇒ `force-cache`: the proxy keeps book/chapter/verse
-  payloads in Next's Data Cache indefinitely (they're public-domain constants).
-- Verse-of-the-day uses `revalidate: 3600`; `random` uses `cache: 'no-store'`.
-- Errors are typed so routes can map them to status codes / graceful fallbacks.
+Cache-control constants: `IMMUTABLE_CACHE =
+"public, max-age=86400, stale-while-revalidate=604800"` for text;
+`SHORT_CACHE = "public, max-age=60, stale-while-revalidate=300"` for search.
 
 ### 3.2 Routes — `app/api/bible/*`
 
-All routes: `getPubkeyFromRequest(request)` → 401 if no NIP-98; then a
-`prisma.member.findFirst({ where: { pubkey } })` gate → 403 if not a member
-(identical to the LiveKit room route). Then call `cpdv(...)` and pass the
-envelope straight through, adding a long-lived `Cache-Control` header.
+Every route runs `requireBibleMember(request)` first, then calls `cpdv(...)` and
+returns the data with an appropriate `Cache-Control` header.
 
-| Route | Proxies | Cache |
-|-------|---------|-------|
-| `GET /api/bible/books` | `/books` (+ `/testaments` merged) | immutable |
-| `GET /api/bible/books/[book]/chapters` | `/books/:book/chapters` | immutable |
-| `GET /api/bible/books/[book]/[chapter]` | `/books/:book/:chapter` | immutable |
-| `GET /api/bible/passage?ref=John+3:16-18` | resolves to verse/range endpoint | immutable |
-| `GET /api/bible/search?q=&book=&testament=&limit=&offset=` | `/search` | short (60s) |
-| `GET /api/bible/verse-of-the-day` | `/verse-of-the-day` | 1h |
-| `GET /api/bible/random` | `/random` | no-store |
+| Route | Proxies / behavior | Cache |
+|-------|--------------------|-------|
+| `GET /api/bible/status` | `{ configured }` — no upstream call | none |
+| `GET /api/bible/books` | `/books` → `{ books }` (carries testament) | immutable |
+| `GET /api/bible/books/[book]/chapters` | `/books/:book/chapters` → `{ chapters }` | immutable |
+| `GET /api/bible/books/[book]/[chapter]` | `/books/:book/:chapter` → `{ verses }` | immutable |
+| `GET /api/bible/passage?ref=John+3:16-18` | parses ref → verse / range / chapter endpoint → `{ verses }` | immutable |
+| `GET /api/bible/search?q=&book=&testament=&limit=&offset=` | `/search` → `{ results, total }` | short (60s) |
+| `GET /api/bible/verse-of-the-day` | `/verse-of-the-day` → `{ verse }` | 1h |
+| `GET /api/bible/random` | `/random` → `{ verse }` | no-store |
 
-Response header on cacheable routes:
-`Cache-Control: public, max-age=86400, stale-while-revalidate=604800` so the
-browser and any CDN/Caddy layer also cache. Two cache tiers (browser + Next Data
-Cache) means a cold community hits Railway a few dozen times total, ever.
+`/api/bible/passage` parses references with a trailing-token regex so multi-word
+/ number-prefixed books work (`1 John 2:1`, `John 3`, `John 3:16-18`).
 
-**Not-configured behavior:** if `!isBibleConfigured()`, routes return
-`{ configured: false }` (200). The client uses this to **hide the Bible nav item
-entirely** — same "hide the affordance" approach LiveKit uses when calling isn't
-set up. No half-broken UI.
+**Not-configured behavior:** `/api/bible/status` returns `{ configured: false }`
+when the env is unset; the client uses this to **hide the Bible nav entirely** —
+the same "hide the affordance" approach LiveKit uses. No half-broken UI.
 
-### 3.3 Why not Next.js `rewrites()` / direct edge proxy?
+### 3.3 Why not Next.js `rewrites()` / a static edge proxy?
 
-A static rewrite can't inject a secret header conditionally, can't run the member
-gate, and can't normalize errors. The explicit route handlers are a few lines
-each and buy us auth + caching + graceful degradation.
+A static rewrite can't inject a secret header, run the member gate, or normalize
+errors. The explicit handlers are a few lines each and buy auth + caching +
+graceful degradation.
 
 ---
 
@@ -140,135 +131,204 @@ each and buy us auth + caching + graceful degradation.
 
 ### 4.1 Service — `app/lib/bible-service.ts`
 
-Typed wrappers over the proxy using the existing `authFetch(signer, url)` helper
-(attaches the NIP-98 header). Mirrors `calendar-service.ts` / `game-service.ts`
-conventions.
+Typed wrappers over the proxy using `authFetch(signer, url)` (attaches the
+NIP-98 header). Types reflect the upstream shape:
 
 ```ts
-export interface BibleBook { id: string; name: string; testament: "OT" | "NT";
-  chapters: number; aliases?: string[]; }
-export interface BibleVerse { book: string; chapter: number; verse: number; text: string; }
+interface BibleBook { name: string; key: string; testament: "OT" | "NT";
+  chapterCount: number; verseCount: number; }
+interface ChapterMeta { chapter: number; verseCount: number; }
+interface BibleVerse { book: string; chapter: number; verse: number; text: string;
+  snippet?: string; } // snippet on search results only
 
-export async function fetchBooks(signer: Signer): Promise<BibleBook[]>;
-export async function fetchChapters(signer: Signer, book: string): Promise<number[]>;
-export async function fetchChapter(signer: Signer, book: string, ch: number): Promise<BibleVerse[]>;
-export async function searchBible(signer: Signer, q: string, opts?): Promise<{ verses: BibleVerse[]; total: number }>;
-export async function fetchVerseOfTheDay(signer: Signer): Promise<BibleVerse>;
+fetchBibleStatus(signer): Promise<boolean>
+fetchBooks(signer): Promise<BibleBook[]>
+fetchChapters(signer, book): Promise<ChapterMeta[]>
+fetchChapter(signer, book, chapter): Promise<BibleVerse[]>
+searchBible(signer, q, opts?): Promise<{ results: BibleVerse[]; total: number }>
+fetchVerseOfTheDay(signer): Promise<BibleVerse>
+fetchPassage(signer, ref): Promise<BibleVerse[]>
+formatRef(book, chapter, verse?, end?): string   // "John 3:16" / "John 3:16-18"
 ```
 
-All unwrap the `{status,data}` envelope and throw on `status !== "ok"`.
+All unwrap the `{status,data}` envelope and throw on error.
 
 ### 4.2 View — `app/components/bible/BibleView.tsx`
 
-Layout follows the existing two-pane pattern (Sidebar list + main reader):
+Self-contained two-pane reader:
 
-- **Book/chapter navigator** (left, or the shared `Sidebar` slot): testament
-  groups → books → chapter grid. Remembers last position.
-- **Reader pane** (main): chapter heading, verse-numbered text, prev/next chapter
-  controls, font-size toggle. Verses are individually selectable.
-- **Search bar**: debounced (~300ms) calls to `/api/bible/search`, results link
-  into the reader.
-- **Verse-of-the-day** chip at the top.
-- **Per-verse actions** (the community hook): **Share to chat** (see §5),
-  **Copy**, **Bookmark** (Phase 2).
-
-Reuses the app's theme CSS vars (`--bg-primary`, `--accent`, …) so it inherits
-the community's `PRIMARY_COLOR`. Mobile: single pane with a back affordance,
-consistent with the existing drawer pattern.
+- **Navigator**: testament-grouped book list → chapter grid. On mobile it
+  collapses (book list ⇄ reader) with a "← Books" affordance.
+- **Reader**: chapter heading, verse-numbered text, prev/next chapter, A−/A+
+  font scaling. **Tap a verse number to select** it (one or several).
+- **Top bar**: verse-of-the-day chip (with Open + ↗ Share), debounced (~300ms)
+  full-text **search**, and a **★ Bookmarks** toggle (with count).
+- **Resume**: opens the persisted last position on load (unless a deep link
+  overrides it).
 
 ### 4.3 Store wiring — `app/lib/store.ts`
 
-- Extend the `View` union: `… | "bible"`.
-- Add light reading state: `bibleLocation: { book: string; chapter: number } | null`
-  and `setBibleLocation`. **Persist only `bibleLocation`** via `partialize`
-  (keeps "resume where you left off" without caching scripture text — text always
-  comes fresh-but-cached through the proxy, honoring the app's "relay/server is
-  source of truth, don't trust persisted content cache" principle).
+- `View` union includes `"bible"`.
+- `bibleLocation: { book, chapter } | null` (+ setter) — **persisted** via
+  `partialize` so members resume where they left off. Scripture text itself is
+  never persisted (always fresh-but-cached via the proxy).
+- `bibleEnabled: boolean | null` (+ setter) — gates the nav item; resolved once
+  on load from `/api/bible/status`.
+- `bibleBookmarks: BibleBookmark[]` + `bibleBookmarksAt: number` (+ setter) —
+  **not persisted**; hydrated from the relay each session (relay is source of
+  truth).
+- `bibleNavTarget: string | null` (+ setter) and `openBibleRef(ref)` — the
+  cross-view deep link. `openBibleRef` sets the target and switches to the Bible
+  view; `BibleView` consumes the target and clears it.
 
-### 4.4 Navigation registration (3 one-line edits)
+### 4.4 Navigation registration
 
-- `ActivityBar.tsx` → add `{ view: "bible", icon: "📖", label: "Bible" }` to
-  `navItems` (conditionally rendered only when `/api/bible/verse-of-the-day`
-  reports configured — or gate via a small `bibleEnabled` store flag fetched once).
-- `AppShell.tsx` → add `bible: BibleView` to the `views` map and
-  `bible: "Bible"` to `viewTitles`.
-
-That's the entire integration surface for Phase 1.
+- `ActivityBar.tsx` — `{ view: "bible", icon: "📖", label: "Bible" }`, filtered
+  out unless `bibleEnabled === true`.
+- `AppShell.tsx` — `bible: BibleView` in the `views` map, `bible: "Bible"` in
+  `viewTitles`, plus a one-shot effect that resolves `fetchBibleStatus` →
+  `setBibleEnabled` and subscribes to bookmarks.
+- `Sidebar.tsx` — Bible heading + a short hint.
 
 ---
 
-## 5. Community / Nostr integration (the differentiator)
+## 5. Community / Nostr features (shipped)
 
-These are what make it *BibleHodl's* reader, not a generic one. Phased so Phase 1
-ships fast.
+### 5.1 Share a passage to chat — Phase 1.5
 
-- **Share a passage to chat (Phase 1.5, cheap).** Per-verse "Share" → posts a
-  formatted blockquote (`> John 3:16 — For God so loved…`) into the active
-  channel via the existing `sendChannelMessage` (kind-42, routed through the
-  `outbox` optimistic-send path). Zero new infra; immediate community value.
-- **Bookmarks & highlights as Nostr events (Phase 2).** Store a member's
-  bookmarks as a NIP-51 list (kind 30001, `d:"bible-bookmarks"`) signed by their
-  key and published to the community relay. Self-sovereign, syncs across devices,
-  no server schema. Highlights can be a parameterized-replaceable event keyed by
-  passage.
-- **Verse-of-the-day in the feed (Phase 2).** A daily post (admin/bot key) of
-  `/verse-of-the-day` into a `#daily-verse` channel, or surfaced in the existing
-  Activity view. Deterministic upstream endpoint means everyone sees the same verse.
-- **Reading plans on the calendar (Phase 3).** Reading-plan entries as NIP-52
-  calendar events (`app/lib/calendar-service.ts`) with a passage ref; clicking a
-  calendar entry deep-links into the reader.
-- **Scripture reference linking (Phase 3).** Detect refs like `John 3:16` in chat
-  messages and render them as links that open the reader at that passage
-  (`/api/bible/passage?ref=`).
+`app/components/bible/ShareVerseModal.tsx`. Select verses → **↗ Share to chat**
+in the floating action bar (verse-of-the-day has its own Share). The modal lists
+the member's group channels (mirrors `ChatSidebar`'s filter), posts the formatted
+passage — `📖 <ref> (CPDV)` + text (verse-numbered for ranges) — via the existing
+`sendChannelMessage` (kind-42, optimistic `outbox` path), then jumps to that
+channel. Shared passages land in normal chat history. No new API/infra.
 
-None of these require touching the upstream — CPDV stays a read-only text source;
-the community layer lives in Nostr + our app, consistent with the platform's
-self-hosted, self-sovereign model.
+### 5.2 Bookmarks — Phase 2 (relay-published)
+
+`app/lib/bible-bookmark-service.ts`. A member's Bible bookmarks live in a single
+**parameterized-replaceable NIP-51 bookmark set**: **kind `30003`**, tag
+`["d", "bible-bookmarks"]`, signed by the member key and published to the
+community relay → syncs across every device, no server DB.
+
+- Each passage is a custom tag `["ref", "<ref>", "<snippet>"]` where `<ref>` is a
+  parseable string like `John 3:16` / `John 3:16-18`.
+- Add/remove rebuilds the full tag set and republishes (replaceable ⇒ relay keeps
+  only the latest). Local update is optimistic; `created_at` advances so the relay
+  echo can't undo it.
+- `subscribeToBibleBookmarks(pubkey)` (wired in `AppShell` init) filters
+  `kinds:[30003], authors:[pubkey], "#d":["bible-bookmarks"], limit:1` and ignores
+  any event not strictly newer than what's held.
+- **UI**: select verses → **☆ Bookmark / ★ Saved** toggle; bookmarked start
+  verses show a **★** in the reader; the **★ Bookmarks** browser lists / jumps to
+  / removes saved passages.
+
+### 5.3 Reading plans on the calendar — Phase 3 (NIP-52)
+
+`createReadingPlan(...)` in `app/lib/calendar-service.ts` generates one
+**date-based calendar event (kind 31922)** per day covering a book, each tagged
+`["bible", "<ref>"]`. `CalendarEvent` gained an optional `bibleRef` (parsed from
+that tag). `CalendarView` has a **📖 Reading plan** modal (book select + start
+date + chapters/day; gated by `bibleEnabled`), and any plan entry shows a
+**📖 Read <ref>** button that deep-links via `openBibleRef`.
+
+### 5.4 In-chat scripture linking — Phase 3
+
+`app/lib/scripture-ref.ts` holds a 73-book alias dictionary (full names + common
+abbreviations) and:
+
+- `parseScriptureRef(input)` → `{ book, chapter, verse?, endVerse? }` (canonical
+  book name).
+- `findScriptureRefs(text)` → match spans, **requiring `chapter:verse`** and
+  anchoring on a known book name, so bare `3:16`, `Section 2:3`, or `john3` are
+  *not* matched.
+
+`app/components/common/ScriptureText.tsx` linkifies any references inside chat
+messages (wired into `ChatView` where `{msg.content}` renders); tapping one calls
+`openBibleRef` and jumps to the passage. Falls back to plain text when Bible is
+disabled or no refs are present.
+
+### 5.5 Deep-link plumbing
+
+`openBibleRef(ref)` (store) sets `bibleNavTarget` and `currentView:"bible"`.
+`BibleView` watches `bibleNavTarget`, parses it with `parseScriptureRef`, opens
+the book/chapter and scrolls to the verse, then clears the target. This path takes
+precedence over resume-last-position.
 
 ---
 
 ## 6. Config & ops
 
-`.env` (slots already present in `.env.example`):
+`.env` (slots present in `.env.example`):
 
 ```
 CPDV_API_URL=https://cpdv-bible-production.up.railway.app
 CPDV_API_KEY=cpdv_xxxxxxxx        # server secret; NEVER NEXT_PUBLIC_*
 ```
 
-- **Secret hygiene:** key is read only in server modules (`app/lib/cpdv.ts`).
-  Never prefixed `NEXT_PUBLIC_`, so it can't leak into the client bundle.
-- **Self-hosting note:** each community can point at the shared hosted CPDV API
-  (default) *or* run their own CPDV-Bible container — same self-sovereign story
-  as relay/Blossom/LiveKit. Document both in the README; default to the hosted URL.
+- **Secret hygiene:** the key is read only in `app/lib/cpdv.ts` (server). Never
+  prefixed `NEXT_PUBLIC_`, so it can't reach the client bundle.
+- **Runtime env:** `CPDV_*` are runtime server vars (not build-time inlined). On
+  the VPS they live in `/opt/biblehodl/.env`; the container must be recreated
+  (`docker compose up -d app`) to pick up changes.
+- **Self-hosting:** a community can use the shared hosted CPDV API (default) or
+  run its own CPDV-Bible container — same self-sovereign story as
+  relay/Blossom/LiveKit.
 - **Rate limits:** CPDV defaults to 100 req / 15 min per IP. With the two-tier
-  immutable cache, steady-state requests are near-zero; the proxy also serializes
-  through one server IP, so a community of 300 won't each burn the upstream limit.
-- **Failure modes:**
-  - Not configured → Bible nav hidden.
-  - CPDV 5xx / timeout → proxy returns cached payload if present, else a 503 the
-    view renders as a non-blocking "Bible service unavailable, retry" banner
-    (same pattern as the registration-check Retry).
-  - Upstream key rotation → update `.env`, `docker compose up -d app`.
+  immutable cache (browser + Next Data Cache) and a single proxy IP, steady-state
+  upstream traffic is near zero.
+- **Failure modes:** not configured → Bible nav hidden; CPDV error → proxy serves
+  a cached payload if present, else a non-blocking error the view renders with a
+  Retry; key rotation → edit `.env`, `docker compose up -d app`.
 
 ---
 
-## 7. Build order
+## 7. Delivered vs. deferred
 
-1. **Phase 1 — Reader.** `cpdv.ts`, `/api/bible/*` routes (books, chapters,
-   chapter, search, votd), `bible-service.ts`, `BibleView`, store `View` +
-   `bibleLocation`, nav registration. End-to-end: browse + search + VOTD.
-2. **Phase 1.5 — Share to chat.** Per-verse share via `sendChannelMessage`.
-3. **Phase 2 — Bookmarks (NIP-51) + daily-verse feed.**
-4. **Phase 3 — Reading plans (NIP-52) + in-chat reference linking.**
+| Phase | Feature | Status |
+|-------|---------|--------|
+| 1 | Reader: book→chapter→verse, search, verse-of-the-day, resume | ✅ shipped |
+| 1.5 | Share passages to chat | ✅ shipped |
+| 2 | Relay-published bookmarks (NIP-51 kind 30003) | ✅ shipped |
+| 3 | Reading plans (NIP-52) | ✅ shipped |
+| 3 | In-chat scripture-reference linking | ✅ shipped |
+| — | Automated daily-verse feed (bot) | ⏸ deferred |
 
-## 8. Testing / verification
+**Daily-verse bot (deferred):** an auto-posting feed needs a dedicated community
+bot key + a server-side cron to publish the verse-of-the-day daily to a channel —
+a product/infra decision (where the key lives, which channel, opt-in). Manual
+verse-of-the-day sharing already works (§5.1).
 
-- Upstream contract is pinned: `X-API-Key` only, `{status,data}` envelope
+---
+
+## 8. File inventory
+
+- `app/lib/cpdv.ts` — server-only upstream client + member gate + cache helpers.
+- `app/api/bible/*` — `status`, `books`, `books/[book]/chapters`,
+  `books/[book]/[chapter]`, `passage`, `search`, `verse-of-the-day`, `random`.
+- `app/lib/bible-service.ts` — typed client wrappers.
+- `app/lib/bible-bookmark-service.ts` — NIP-51 bookmark set (publish/subscribe).
+- `app/lib/scripture-ref.ts` — ref dictionary, parser, detector.
+- `app/components/bible/BibleView.tsx` — the reader.
+- `app/components/bible/ShareVerseModal.tsx` — share-to-chat.
+- `app/components/common/ScriptureText.tsx` — chat ref linkifier.
+- `app/lib/calendar-service.ts` — `createReadingPlan` + `bibleRef` tag.
+- `app/lib/store.ts` — `View:"bible"`, `bibleLocation`, `bibleEnabled`,
+  `bibleBookmarks`/`At`, `bibleNavTarget`, `openBibleRef`.
+- Nav wiring: `ActivityBar.tsx`, `AppShell.tsx`, `Sidebar.tsx`,
+  `CalendarView.tsx`, `ChatView.tsx`.
+
+---
+
+## 9. Testing / verification
+
+- Upstream contract pinned: `X-API-Key` only, `{status,data}` envelope
   (verified live 2026-06-29).
-- Unit: `cpdv.ts` envelope unwrap + error mapping; book-name/ref resolution.
-- Route: 401 unauthenticated, 403 non-member, 200 member, `{configured:false}`
-  when env unset (mirror the LiveKit route tests).
-- Manual smoke: `next build` clean, nav appears only when configured, resume-last
-  position works, search debounces, share posts into chat history.
+- Routes: 401 unauthenticated, 403 non-member, 200 member, `{configured:false}`
+  when env unset — verified in prod (`/api/bible/*` → 401 unauthed).
+- Ref detector: unit-checked to link `John 3:16`, `1 John 2:1-3`, `Ps 23:1`,
+  `Gen 1:1-3` and reject `3:16`, `Section 2:3`, `john3`.
+- Build: `tsc --noEmit` + `next build` clean on every phase.
+- Manual smoke (in-browser): nav appears only when configured; resume works;
+  search debounces; share posts to chat; bookmark persists + syncs; reading-plan
+  entries + chat links deep-link into the reader.
 ```
