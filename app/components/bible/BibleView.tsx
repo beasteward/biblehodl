@@ -15,6 +15,7 @@ import {
 } from "../../lib/bible-service";
 import ShareVerseModal from "./ShareVerseModal";
 import { toggleBibleBookmark, removeBibleBookmark } from "../../lib/bible-bookmark-service";
+import { parseScriptureRef } from "../../lib/scripture-ref";
 
 // Module-level stable defaults so store/derived selectors never return a fresh
 // reference each render (avoids the React #185 unstable-snapshot trap).
@@ -25,6 +26,8 @@ export default function BibleView() {
   const bibleLocation = useAppStore((s) => s.bibleLocation);
   const setBibleLocation = useAppStore((s) => s.setBibleLocation);
   const bibleBookmarks = useAppStore((s) => s.bibleBookmarks);
+  const bibleNavTarget = useAppStore((s) => s.bibleNavTarget);
+  const setBibleNavTarget = useAppStore((s) => s.setBibleNavTarget);
 
   const [books, setBooks] = useState<BibleBook[]>(EMPTY_BOOKS);
   const [booksError, setBooksError] = useState<string | null>(null);
@@ -117,11 +120,26 @@ export default function BibleView() {
 
   // ── Resume last position once books are available ──
   useEffect(() => {
-    if (resumedRef.current || books.length === 0 || !bibleLocation) return;
+    // A pending deep-link target takes precedence over resume.
+    if (resumedRef.current || books.length === 0 || !bibleLocation || bibleNavTarget) return;
     resumedRef.current = true;
     openBook(bibleLocation.book);
     openChapter(bibleLocation.book, bibleLocation.chapter);
-  }, [books, bibleLocation, openBook, openChapter]);
+  }, [books, bibleLocation, bibleNavTarget, openBook, openChapter]);
+
+  // ── Consume a cross-view deep link (chat ref / reading-plan entry) ──
+  useEffect(() => {
+    if (!bibleNavTarget || !signer) return;
+    const parsed = parseScriptureRef(bibleNavTarget);
+    resumedRef.current = true; // don't also run resume afterwards
+    setBibleNavTarget(null);
+    if (!parsed) return;
+    setShowBookmarks(false);
+    setQuery("");
+    setResults(null);
+    openBook(parsed.book);
+    openChapter(parsed.book, parsed.chapter, parsed.verse);
+  }, [bibleNavTarget, signer, setBibleNavTarget, openBook, openChapter]);
 
   // ── Scroll to a highlighted verse after render ──
   useEffect(() => {

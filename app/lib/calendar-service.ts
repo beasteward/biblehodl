@@ -17,6 +17,8 @@ export interface CreateEventInput {
   end?: Date;
   location?: string;
   allDay?: boolean;
+  // Optional Bible passage reference for reading-plan entries (e.g. "John 3").
+  bibleRef?: string;
 }
 
 // ─── Create calendar event ───
@@ -45,6 +47,7 @@ export async function createCalendarEvent(
 
   if (input.location) tags.push(["location", input.location]);
   if (input.description) tags.push(["description", input.description]);
+  if (input.bibleRef) tags.push(["bible", input.bibleRef]);
 
   const kind = input.allDay ? 31922 : KIND_TIME_CALENDAR_EVENT;
 
@@ -64,9 +67,51 @@ export async function createCalendarEvent(
     end: input.end ? Math.floor(input.end.getTime() / 1000) : undefined,
     location: input.location,
     pubkey,
+    bibleRef: input.bibleRef,
   });
 
   return signed.id;
+}
+
+// ─── Reading plan: generate one all-day calendar entry per day ───
+
+export interface ReadingPlanInput {
+  book: string;
+  /** Total chapters in the book. */
+  chapters: number;
+  startDate: Date;
+  /** Chapters covered per day (default 1). */
+  chaptersPerDay?: number;
+}
+
+/**
+ * Create a Bible reading plan as a series of NIP-52 date-based calendar events,
+ * one per day, each tagged with its passage reference for deep-linking.
+ * Returns the number of entries created.
+ */
+export async function createReadingPlan(input: ReadingPlanInput, signer: Signer): Promise<number> {
+  const perDay = Math.max(1, input.chaptersPerDay ?? 1);
+  let created = 0;
+  let day = 0;
+  for (let ch = 1; ch <= input.chapters; ch += perDay) {
+    const last = Math.min(ch + perDay - 1, input.chapters);
+    const ref = perDay === 1 || last === ch ? `${input.book} ${ch}` : `${input.book} ${ch}-${last}`;
+    const date = new Date(input.startDate);
+    date.setDate(date.getDate() + day);
+    await createCalendarEvent(
+      {
+        title: `📖 ${ref}`,
+        start: date,
+        allDay: true,
+        bibleRef: ref,
+        description: `Bible reading plan: ${input.book}`,
+      },
+      signer
+    );
+    created++;
+    day++;
+  }
+  return created;
 }
 
 // ─── Subscribe to calendar events ───
@@ -87,6 +132,7 @@ export function subscribeToCalendarEvents(pubkeys?: string[]) {
     (event) => {
       const tags = new Map(event.tags.map((t) => [t[0], t[1]]));
       const title = tags.get("title") || tags.get("name") || "Untitled";
+      const bibleRef = tags.get("bible");
       const startRaw = tags.get("start");
       const endRaw = tags.get("end");
       const location = tags.get("location");
@@ -114,6 +160,7 @@ export function subscribeToCalendarEvents(pubkeys?: string[]) {
         end,
         location,
         pubkey: event.pubkey,
+        bibleRef,
       };
 
       store.addCalendarEvent(calEvent);

@@ -89,6 +89,9 @@ export interface CalendarEvent {
   end?: number;
   location?: string;
   pubkey: string;
+  // Reading-plan passage reference (e.g. "John 3"), if this event is a Bible
+  // reading-plan entry. Carried on the NIP-52 event as a `bible` tag.
+  bibleRef?: string;
 }
 
 export type MeetingStatus = "scheduled" | "active" | "ended";
@@ -152,6 +155,12 @@ interface AppState {
   bibleBookmarks: BibleBookmark[];
   bibleBookmarksAt: number;
   setBibleBookmarks: (list: BibleBookmark[], updatedAt: number) => void;
+  // Cross-view deep link: a pending reference string the Bible reader should
+  // open (set by chat links / reading-plan entries), cleared once consumed.
+  bibleNavTarget: string | null;
+  setBibleNavTarget: (ref: string | null) => void;
+  // Navigate to the Bible reader at a passage reference (e.g. "John 3:16").
+  openBibleRef: (ref: string) => void;
 
   // Chat
   channels: Channel[];
@@ -254,6 +263,7 @@ export const useAppStore = create<AppState>()(
           bibleLocation: null,
           bibleBookmarks: [],
           bibleBookmarksAt: 0,
+          bibleNavTarget: null,
         }),
       isRegistered: false,
       setIsRegistered: (isRegistered) => set({ isRegistered }),
@@ -273,6 +283,9 @@ export const useAppStore = create<AppState>()(
       bibleBookmarksAt: 0,
       setBibleBookmarks: (bibleBookmarks, bibleBookmarksAt) =>
         set({ bibleBookmarks, bibleBookmarksAt }),
+      bibleNavTarget: null,
+      setBibleNavTarget: (bibleNavTarget) => set({ bibleNavTarget }),
+      openBibleRef: (ref) => set({ bibleNavTarget: ref, currentView: "bible" }),
 
       // Chat
       channels: [],

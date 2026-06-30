@@ -15,6 +15,7 @@ import { sendDirectMessage, sendDmReaction, retractDmReaction } from "../../lib/
 import { retryMessage } from "../../lib/outbox";
 import ChannelMembersPanel from "./ChannelMembersPanel";
 import EmojiPicker from "./EmojiPicker";
+import ScriptureText from "../common/ScriptureText";
 import dynamic from "next/dynamic";
 import { channelCallRoom, dmCallRoom, useCallPresence, CALLS_ENABLED } from "../../lib/call-room";
 
@@ -336,7 +337,7 @@ export default function ChatView() {
                         color: isMe ? "white" : "var(--text-primary)",
                       }}
                     >
-                      {msg.content}
+                      <ScriptureText content={msg.content} linkColor={isMe ? "#fff" : "var(--accent-light)"} />
                     </p>
                   </div>
                   {/* Reaction pills — grouped by emoji with counts */}

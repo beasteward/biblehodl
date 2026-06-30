@@ -2,13 +2,17 @@
 
 import { useState, useEffect, useMemo } from "react";
 import { useAppStore } from "../../lib/store";
-import { createCalendarEvent, subscribeToCalendarEvents } from "../../lib/calendar-service";
+import { createCalendarEvent, createReadingPlan, subscribeToCalendarEvents } from "../../lib/calendar-service";
+import { fetchBooks, fetchChapters, type BibleBook } from "../../lib/bible-service";
 
 export default function CalendarView() {
   const keys = useAppStore((s) => s.keys);
   const calendarEvents = useAppStore((s) => s.calendarEvents);
+  const bibleEnabled = useAppStore((s) => s.bibleEnabled);
+  const openBibleRef = useAppStore((s) => s.openBibleRef);
   const [currentDate, setCurrentDate] = useState(new Date());
   const [showCreate, setShowCreate] = useState(false);
+  const [showPlan, setShowPlan] = useState(false);
   const [selectedDate, setSelectedDate] = useState<string | null>(null);
 
   // Subscribe to calendar events
@@ -85,13 +89,24 @@ export default function CalendarView() {
             <button onClick={nextMonth} className="px-2 py-1 rounded text-sm cursor-pointer" style={{ background: "var(--bg-tertiary)", color: "var(--text-secondary)" }}>→</button>
           </div>
         </div>
-        <button
-          onClick={() => setShowCreate(true)}
-          className="px-4 py-1.5 rounded text-sm cursor-pointer"
-          style={{ background: "var(--accent)", color: "white" }}
-        >
-          + New Event
-        </button>
+        <div className="flex items-center gap-2">
+          {bibleEnabled && (
+            <button
+              onClick={() => setShowPlan(true)}
+              className="px-3 py-1.5 rounded text-sm cursor-pointer"
+              style={{ background: "var(--bg-tertiary)", color: "var(--text-secondary)", border: "1px solid var(--border)" }}
+            >
+              📖 Reading plan
+            </button>
+          )}
+          <button
+            onClick={() => setShowCreate(true)}
+            className="px-4 py-1.5 rounded text-sm cursor-pointer"
+            style={{ background: "var(--accent)", color: "white" }}
+          >
+            + New Event
+          </button>
+        </div>
       </div>
 
       <div className="flex-1 flex overflow-hidden">
@@ -175,6 +190,15 @@ export default function CalendarView() {
                     {ev.description && (
                       <div className="text-xs mt-2" style={{ color: "var(--text-secondary)" }}>{ev.description}</div>
                     )}
+                    {ev.bibleRef && (
+                      <button
+                        onClick={() => openBibleRef(ev.bibleRef!)}
+                        className="mt-2 text-xs font-medium px-2.5 py-1 rounded cursor-pointer"
+                        style={{ background: "var(--accent)", color: "white" }}
+                      >
+                        📖 Read {ev.bibleRef}
+                      </button>
+                    )}
                   </div>
                 ))}
               </div>
@@ -185,6 +209,115 @@ export default function CalendarView() {
 
       {/* Create Event Modal */}
       {showCreate && <CreateEventModal onClose={() => setShowCreate(false)} />}
+      {showPlan && <CreateReadingPlanModal onClose={() => setShowPlan(false)} />}
+    </div>
+  );
+}
+
+function CreateReadingPlanModal({ onClose }: { onClose: () => void }) {
+  const signer = useAppStore((s) => s.signer);
+  const [books, setBooks] = useState<BibleBook[]>([]);
+  const [book, setBook] = useState("");
+  const [startDate, setStartDate] = useState("");
+  const [perDay, setPerDay] = useState(1);
+  const [creating, setCreating] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [done, setDone] = useState<number | null>(null);
+
+  useEffect(() => {
+    if (!signer) return;
+    fetchBooks(signer).then(setBooks).catch(() => setError("Couldn’t load books"));
+  }, [signer]);
+
+  const selected = books.find((b) => b.key === book);
+
+  const handleCreate = async () => {
+    if (!signer || !selected || !startDate) return;
+    setCreating(true);
+    setError(null);
+    try {
+      // Use the live chapter count for the book so the plan covers it exactly.
+      const chapters = await fetchChapters(signer, selected.key);
+      const count = await createReadingPlan(
+        {
+          book: selected.key,
+          chapters: chapters.length || selected.chapterCount,
+          startDate: new Date(startDate + "T00:00:00"),
+          chaptersPerDay: perDay,
+        },
+        signer
+      );
+      setDone(count);
+    } catch (e) {
+      setError((e as Error).message || "Failed to create plan");
+    } finally {
+      setCreating(false);
+    }
+  };
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{ background: "rgba(0,0,0,0.6)" }}>
+      <div className="w-full max-w-md rounded-xl p-6 space-y-4" style={{ background: "var(--bg-secondary)", border: "1px solid var(--border)" }}>
+        <h3 className="text-lg font-semibold" style={{ color: "var(--text-primary)" }}>📖 Bible reading plan</h3>
+
+        {done != null ? (
+          <>
+            <p className="text-sm" style={{ color: "var(--text-secondary)" }}>
+              Added {done} daily reading{done !== 1 ? "s" : ""} to your calendar. Tap any day’s entry to open the passage.
+            </p>
+            <div className="flex justify-end">
+              <button onClick={onClose} className="px-4 py-2 rounded text-sm cursor-pointer" style={{ background: "var(--accent)", color: "white" }}>
+                Done
+              </button>
+            </div>
+          </>
+        ) : (
+          <>
+            <p className="text-xs" style={{ color: "var(--text-muted)" }}>
+              Generates one calendar entry per day covering a book, each linking into the reader.
+            </p>
+            <div>
+              <label className="text-xs mb-1 block" style={{ color: "var(--text-muted)" }}>Book</label>
+              <select
+                value={book}
+                onChange={(e) => setBook(e.target.value)}
+                className="w-full px-3 py-2 rounded text-sm outline-none"
+                style={{ background: "var(--bg-tertiary)", border: "1px solid var(--border)", color: "var(--text-primary)" }}
+              >
+                <option value="">Select a book…</option>
+                {books.map((b) => (
+                  <option key={b.key} value={b.key}>{b.name} ({b.chapterCount} ch)</option>
+                ))}
+              </select>
+            </div>
+            <div className="grid grid-cols-2 gap-2">
+              <div>
+                <label className="text-xs mb-1 block" style={{ color: "var(--text-muted)" }}>Start date</label>
+                <input type="date" value={startDate} onChange={(e) => setStartDate(e.target.value)}
+                  className="w-full px-3 py-2 rounded text-sm outline-none" style={{ background: "var(--bg-tertiary)", border: "1px solid var(--border)", color: "var(--text-primary)" }} />
+              </div>
+              <div>
+                <label className="text-xs mb-1 block" style={{ color: "var(--text-muted)" }}>Chapters/day</label>
+                <input type="number" min={1} max={20} value={perDay} onChange={(e) => setPerDay(Math.max(1, Number(e.target.value) || 1))}
+                  className="w-full px-3 py-2 rounded text-sm outline-none" style={{ background: "var(--bg-tertiary)", border: "1px solid var(--border)", color: "var(--text-primary)" }} />
+              </div>
+            </div>
+            {selected && (
+              <p className="text-xs" style={{ color: "var(--text-muted)" }}>
+                {Math.ceil(selected.chapterCount / perDay)} day{Math.ceil(selected.chapterCount / perDay) !== 1 ? "s" : ""} to finish {selected.name}.
+              </p>
+            )}
+            {error && <p className="text-sm" style={{ color: "var(--danger)" }}>{error}</p>}
+            <div className="flex gap-2 justify-end pt-2">
+              <button onClick={onClose} className="px-4 py-2 rounded text-sm cursor-pointer" style={{ background: "var(--bg-tertiary)", color: "var(--text-secondary)" }}>Cancel</button>
+              <button onClick={handleCreate} disabled={creating || !book || !startDate}
+                className="px-4 py-2 rounded text-sm cursor-pointer disabled:opacity-50" style={{ background: "var(--accent)", color: "white" }}>
+                {creating ? "Creating…" : "Create plan"}
+              </button>
+            </div>
+          </>
+        )}
+      </div>
     </div>
   );
 }
