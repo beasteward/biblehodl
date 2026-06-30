@@ -13,6 +13,7 @@ import {
   type ChapterMeta,
   type BibleVerse,
 } from "../../lib/bible-service";
+import ShareVerseModal from "./ShareVerseModal";
 
 // Module-level stable defaults so store/derived selectors never return a fresh
 // reference each render (avoids the React #185 unstable-snapshot trap).
@@ -37,6 +38,10 @@ export default function BibleView() {
 
   const [votd, setVotd] = useState<BibleVerse | null>(null);
   const [fontScale, setFontScale] = useState(1);
+
+  // Verse selection for share-to-chat. Tap a verse number to toggle.
+  const [selectedVerses, setSelectedVerses] = useState<Set<number>>(new Set());
+  const [shareTarget, setShareTarget] = useState<{ book: string; chapter: number; verses: BibleVerse[] } | null>(null);
 
   // Search
   const [query, setQuery] = useState("");
@@ -92,6 +97,7 @@ export default function BibleView() {
       setReaderLoading(true);
       setReaderError(null);
       setHighlightVerse(scrollToVerse ?? null);
+      setSelectedVerses(new Set());
       fetchChapter(signer, bookKey, chapter)
         .then((v) => {
           setVerses(v);
@@ -146,6 +152,22 @@ export default function BibleView() {
   const prevChapter = chapterIndex && chapterIndex > 1 ? chapterIndex - 1 : null;
   const nextChapter =
     chapterIndex && chapters.length > 0 && chapterIndex < chapters.length ? chapterIndex + 1 : null;
+
+  const toggleVerse = (verseNum: number) => {
+    setSelectedVerses((prev) => {
+      const next = new Set(prev);
+      if (next.has(verseNum)) next.delete(verseNum);
+      else next.add(verseNum);
+      return next;
+    });
+  };
+
+  const shareSelected = () => {
+    if (!selectedBook || selectedChapter == null) return;
+    const chosen = verses.filter((v) => selectedVerses.has(v.verse));
+    if (chosen.length === 0) return;
+    setShareTarget({ book: selectedBook, chapter: selectedChapter, verses: chosen });
+  };
 
   const onResultClick = (v: BibleVerse) => {
     setQuery("");
@@ -303,23 +325,41 @@ export default function BibleView() {
               </div>
             ) : (
               <div className="max-w-2xl mx-auto leading-relaxed" style={{ fontSize: `${fontScale}rem` }}>
-                {verses.map((v) => (
-                  <div
-                    key={v.verse}
-                    ref={(el) => {
-                      verseRefs.current[v.verse] = el;
-                    }}
-                    className="mb-2 rounded px-1 transition-colors"
-                    style={{
-                      background: highlightVerse === v.verse ? "var(--bg-active)" : "transparent",
-                    }}
-                  >
-                    <sup className="mr-1.5 font-semibold" style={{ color: "var(--accent-light)" }}>
-                      {v.verse}
-                    </sup>
-                    <span style={{ color: "var(--text-primary)" }}>{v.text}</span>
-                  </div>
-                ))}
+                {verses.map((v) => {
+                  const isSelected = selectedVerses.has(v.verse);
+                  return (
+                    <div
+                      key={v.verse}
+                      ref={(el) => {
+                        verseRefs.current[v.verse] = el;
+                      }}
+                      className="mb-2 rounded px-1 py-0.5 transition-colors"
+                      style={{
+                        background: isSelected
+                          ? "var(--bg-active)"
+                          : highlightVerse === v.verse
+                          ? "var(--bg-active)"
+                          : "transparent",
+                        borderLeft: isSelected ? "3px solid var(--accent)" : "3px solid transparent",
+                        paddingLeft: "0.5rem",
+                      }}
+                    >
+                      <button
+                        onClick={() => toggleVerse(v.verse)}
+                        className="mr-1.5 font-semibold align-super rounded px-1"
+                        style={{
+                          fontSize: "0.7em",
+                          color: isSelected ? "#fff" : "var(--accent-light)",
+                          background: isSelected ? "var(--accent)" : "transparent",
+                        }}
+                        title="Tap to select for sharing"
+                      >
+                        {v.verse}
+                      </button>
+                      <span style={{ color: "var(--text-primary)" }}>{v.text}</span>
+                    </div>
+                  );
+                })}
 
                 {/* Prev/Next chapter */}
                 <div className="flex items-center justify-between mt-8 pt-4" style={{ borderTop: "1px solid var(--border)" }}>
@@ -363,6 +403,14 @@ export default function BibleView() {
               title="Open passage"
             >
               “{votd.text}” — {formatRef(votd.book, votd.chapter, votd.verse)}
+            </button>
+            <button
+              className="ml-2 not-italic hover:underline"
+              onClick={() => setShareTarget({ book: votd.book, chapter: votd.chapter, verses: [votd] })}
+              style={{ color: "var(--accent-light)" }}
+              title="Share to chat"
+            >
+              ↗ Share
             </button>
           </div>
         )}
@@ -412,6 +460,41 @@ export default function BibleView() {
           {Navigator}
           {Reader}
         </div>
+      )}
+
+      {/* Floating share bar when verses are selected */}
+      {readerActive && selectedVerses.size > 0 && (
+        <div
+          className="fixed left-1/2 -translate-x-1/2 z-40 flex items-center gap-3 px-4 py-2.5 rounded-full shadow-lg bottom-20 md:bottom-6"
+          style={{ background: "var(--bg-tertiary)", border: "1px solid var(--border)" }}
+        >
+          <span className="text-sm" style={{ color: "var(--text-secondary)" }}>
+            {selectedVerses.size} verse{selectedVerses.size !== 1 ? "s" : ""} selected
+          </span>
+          <button
+            onClick={shareSelected}
+            className="px-3 py-1.5 rounded-full text-sm font-medium"
+            style={{ background: "var(--accent)", color: "#fff" }}
+          >
+            ↗ Share to chat
+          </button>
+          <button
+            onClick={() => setSelectedVerses(new Set())}
+            className="text-sm"
+            style={{ color: "var(--text-muted)" }}
+          >
+            Clear
+          </button>
+        </div>
+      )}
+
+      {shareTarget && (
+        <ShareVerseModal
+          book={shareTarget.book}
+          chapter={shareTarget.chapter}
+          verses={shareTarget.verses}
+          onClose={() => setShareTarget(null)}
+        />
       )}
     </div>
   );
