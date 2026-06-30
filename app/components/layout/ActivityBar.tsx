@@ -3,13 +3,14 @@
 import { useEffect, useRef, useState } from "react";
 import { useAppStore, type View } from "../../lib/store";
 
-const navItems: { view: View; icon: string; label: string; adminOnly?: boolean }[] = [
+const navItems: { view: View; icon: string; label: string; adminOnly?: boolean; bibleOnly?: boolean }[] = [
   { view: "chat", icon: "💬", label: "Chat" },
   { view: "activity", icon: "🔔", label: "Activity" },
   { view: "calendar", icon: "📅", label: "Calendar" },
   { view: "meetings", icon: "👥", label: "Meetings" },
   { view: "files", icon: "📁", label: "Files" },
   { view: "games", icon: "🎮", label: "Games" },
+  { view: "bible", icon: "📖", label: "Bible", bibleOnly: true },
   { view: "team", icon: "⚙️", label: "Team" },
   { view: "admin", icon: "🛡️", label: "Admin", adminOnly: true },
 ];
@@ -40,6 +41,7 @@ export default function ActivityBar() {
   const activity = useAppStore((s) => s.activity);
   const activityLastReadAt = useAppStore((s) => s.activityLastReadAt);
   const isAdmin = memberProfile?.role === "owner" || memberProfile?.role === "admin";
+  const bibleEnabled = useAppStore((s) => s.bibleEnabled);
 
   const [moreOpen, setMoreOpen] = useState(false);
   const moreRef = useRef<HTMLDivElement>(null);
@@ -65,7 +67,9 @@ export default function ActivityBar() {
   const unreadTotal = Object.values(unreadCounts).reduce((sum, n) => sum + n, 0);
   // Unread Activity = items newer than the last time the feed was opened.
   const activityUnread = activity.filter((a) => a.created_at > activityLastReadAt).length;
-  const visibleItems = navItems.filter((item) => !item.adminOnly || isAdmin);
+  const visibleItems = navItems.filter(
+    (item) => (!item.adminOnly || isAdmin) && (!item.bibleOnly || bibleEnabled === true)
+  );
 
   // Unread badge count for a given view (0 when none).
   const badgeFor = (view: View) =>

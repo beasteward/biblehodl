@@ -28,6 +28,7 @@ export function SidebarContent() {
           {currentView === "meetings" && "Meetings"}
           {currentView === "files" && "Files"}
           {currentView === "games" && "Games"}
+          {currentView === "bible" && "Bible"}
           {currentView === "team" && "Team"}
           {currentView === "admin" && "Admin"}
         </h2>
@@ -38,6 +39,12 @@ export function SidebarContent() {
         {currentView === "activity" && (
           <div className="p-4 text-sm" style={{ color: "var(--text-secondary)" }}>
             Reactions and mentions on your messages collect here.
+          </div>
+        )}
+        {currentView === "bible" && (
+          <div className="p-4 text-sm" style={{ color: "var(--text-secondary)" }}>
+            Catholic Public Domain Version — 73 books. Pick a book and chapter to
+            read, or search the full text.
           </div>
         )}
         {currentView === "calendar" && (

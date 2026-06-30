@@ -3,7 +3,15 @@ import { persist } from "zustand/middleware";
 import type { Identity } from "./nostr";
 import type { Signer, SignerType } from "./signer";
 
-export type View = "chat" | "activity" | "calendar" | "meetings" | "files" | "games" | "team" | "admin";
+export type View = "chat" | "activity" | "calendar" | "meetings" | "files" | "games" | "bible" | "team" | "admin";
+
+// Last-read position in the Bible reader. Persisted so members resume where
+// they left off. Only the position is cached — never the scripture text, which
+// always comes fresh-but-cached through the BFF proxy.
+export interface BibleLocation {
+  book: string;
+  chapter: number;
+}
 
 export interface MemberProfile {
   firstName: string;
@@ -118,6 +126,14 @@ interface AppState {
   currentView: View;
   setCurrentView: (view: View) => void;
 
+  // Bible reader
+  bibleLocation: BibleLocation | null;
+  setBibleLocation: (loc: BibleLocation | null) => void;
+  // Whether the Bible feature is configured server-side (resolved once at load).
+  // Null = not yet checked; gates whether the Bible nav item renders at all.
+  bibleEnabled: boolean | null;
+  setBibleEnabled: (enabled: boolean) => void;
+
   // Chat
   channels: Channel[];
   setChannels: (channels: Channel[]) => void;
@@ -216,6 +232,7 @@ export const useAppStore = create<AppState>()(
           meetings: [],
           activeMeetingId: null,
           profiles: {},
+          bibleLocation: null,
         }),
       isRegistered: false,
       setIsRegistered: (isRegistered) => set({ isRegistered }),
@@ -225,6 +242,12 @@ export const useAppStore = create<AppState>()(
       // Navigation
       currentView: "chat",
       setCurrentView: (currentView) => set({ currentView }),
+
+      // Bible reader
+      bibleLocation: null,
+      setBibleLocation: (bibleLocation) => set({ bibleLocation }),
+      bibleEnabled: null,
+      setBibleEnabled: (bibleEnabled) => set({ bibleEnabled }),
 
       // Chat
       channels: [],
@@ -419,6 +442,8 @@ export const useAppStore = create<AppState>()(
         signerMode: state.signerMode,
         ncryptsec: state.ncryptsec,
         currentView: state.currentView,
+        // Resume the reader at the member's last position across reloads.
+        bibleLocation: state.bibleLocation,
         // Persisted so the Activity badge reflects "since you last looked".
         activityLastReadAt: state.activityLastReadAt,
         // Persisted read state so unread badges reflect "since you last looked"

@@ -22,6 +22,8 @@ import CalendarView from "../calendar/CalendarView";
 import MeetingsView from "../meetings/MeetingsView";
 import FilesView from "../files/FilesView";
 import GamesView from "../games/GamesView";
+import BibleView from "../bible/BibleView";
+import { fetchBibleStatus } from "../../lib/bible-service";
 import TeamManager from "../team/TeamManager";
 import AdminPanel from "../admin/AdminPanel";
 
@@ -32,6 +34,7 @@ const viewTitles: Record<View, string> = {
   meetings: "Meetings",
   files: "Files",
   games: "Games",
+  bible: "Bible",
   team: "Team",
   admin: "Admin",
 };
@@ -43,6 +46,7 @@ const views: Record<View, React.ComponentType> = {
   meetings: MeetingsView,
   files: FilesView,
   games: GamesView,
+  bible: BibleView,
   team: TeamManager,
   admin: AdminPanel,
 };
@@ -54,6 +58,20 @@ export default function AppShell() {
   const ActiveView = views[currentView];
 
   const signer = useAppStore((s) => s.signer);
+  const setBibleEnabled = useAppStore((s) => s.setBibleEnabled);
+
+  // Resolve once whether the Bible feature is configured for this deployment,
+  // so the nav item only appears when the CPDV proxy is wired up.
+  useEffect(() => {
+    if (!signer) return;
+    let cancelled = false;
+    fetchBibleStatus(signer).then((enabled) => {
+      if (!cancelled) setBibleEnabled(enabled);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [signer, setBibleEnabled]);
 
   // Mobile slide-in drawer for the Sidebar.
   const [drawerOpen, setDrawerOpen] = useState(false);

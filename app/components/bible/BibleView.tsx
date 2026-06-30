@@ -1,0 +1,418 @@
+"use client";
+
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useAppStore } from "../../lib/store";
+import {
+  fetchBooks,
+  fetchChapters,
+  fetchChapter,
+  searchBible,
+  fetchVerseOfTheDay,
+  formatRef,
+  type BibleBook,
+  type ChapterMeta,
+  type BibleVerse,
+} from "../../lib/bible-service";
+
+// Module-level stable defaults so store/derived selectors never return a fresh
+// reference each render (avoids the React #185 unstable-snapshot trap).
+const EMPTY_BOOKS: BibleBook[] = [];
+
+export default function BibleView() {
+  const signer = useAppStore((s) => s.signer);
+  const bibleLocation = useAppStore((s) => s.bibleLocation);
+  const setBibleLocation = useAppStore((s) => s.setBibleLocation);
+
+  const [books, setBooks] = useState<BibleBook[]>(EMPTY_BOOKS);
+  const [booksError, setBooksError] = useState<string | null>(null);
+
+  const [selectedBook, setSelectedBook] = useState<string | null>(null);
+  const [chapters, setChapters] = useState<ChapterMeta[]>([]);
+  const [selectedChapter, setSelectedChapter] = useState<number | null>(null);
+
+  const [verses, setVerses] = useState<BibleVerse[]>([]);
+  const [readerLoading, setReaderLoading] = useState(false);
+  const [readerError, setReaderError] = useState<string | null>(null);
+  const [highlightVerse, setHighlightVerse] = useState<number | null>(null);
+
+  const [votd, setVotd] = useState<BibleVerse | null>(null);
+  const [fontScale, setFontScale] = useState(1);
+
+  // Search
+  const [query, setQuery] = useState("");
+  const [results, setResults] = useState<BibleVerse[] | null>(null);
+  const [searching, setSearching] = useState(false);
+
+  const verseRefs = useRef<Record<number, HTMLDivElement | null>>({});
+  const resumedRef = useRef(false);
+
+  // ── Load books + verse-of-the-day once ──
+  useEffect(() => {
+    if (!signer) return;
+    let cancelled = false;
+    fetchBooks(signer)
+      .then((b) => {
+        if (!cancelled) setBooks(b);
+      })
+      .catch((e) => {
+        if (!cancelled) setBooksError(e.message || "Failed to load books");
+      });
+    fetchVerseOfTheDay(signer)
+      .then((v) => {
+        if (!cancelled) setVotd(v);
+      })
+      .catch(() => {
+        /* non-fatal */
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [signer]);
+
+  // ── Open a book: load its chapter list ──
+  const openBook = useCallback(
+    (bookKey: string) => {
+      if (!signer) return;
+      setSelectedBook(bookKey);
+      setSelectedChapter(null);
+      setChapters([]);
+      fetchChapters(signer, bookKey)
+        .then(setChapters)
+        .catch((e) => setReaderError(e.message || "Failed to load chapters"));
+    },
+    [signer]
+  );
+
+  // ── Open a chapter: load its verses ──
+  const openChapter = useCallback(
+    (bookKey: string, chapter: number, scrollToVerse?: number) => {
+      if (!signer) return;
+      setSelectedBook(bookKey);
+      setSelectedChapter(chapter);
+      setReaderLoading(true);
+      setReaderError(null);
+      setHighlightVerse(scrollToVerse ?? null);
+      fetchChapter(signer, bookKey, chapter)
+        .then((v) => {
+          setVerses(v);
+          setBibleLocation({ book: bookKey, chapter });
+        })
+        .catch((e) => setReaderError(e.message || "Failed to load chapter"))
+        .finally(() => setReaderLoading(false));
+    },
+    [signer, setBibleLocation]
+  );
+
+  // ── Resume last position once books are available ──
+  useEffect(() => {
+    if (resumedRef.current || books.length === 0 || !bibleLocation) return;
+    resumedRef.current = true;
+    openBook(bibleLocation.book);
+    openChapter(bibleLocation.book, bibleLocation.chapter);
+  }, [books, bibleLocation, openBook, openChapter]);
+
+  // ── Scroll to a highlighted verse after render ──
+  useEffect(() => {
+    if (highlightVerse == null || readerLoading) return;
+    const el = verseRefs.current[highlightVerse];
+    if (el) el.scrollIntoView({ behavior: "smooth", block: "center" });
+  }, [highlightVerse, readerLoading, verses]);
+
+  // ── Debounced search ──
+  useEffect(() => {
+    const q = query.trim();
+    if (!signer || q.length < 2) {
+      setResults(null);
+      setSearching(false);
+      return;
+    }
+    setSearching(true);
+    const handle = setTimeout(() => {
+      searchBible(signer, q, { limit: 50 })
+        .then((r) => setResults(r.results))
+        .catch(() => setResults([]))
+        .finally(() => setSearching(false));
+    }, 300);
+    return () => clearTimeout(handle);
+  }, [query, signer]);
+
+  const testaments = useMemo(() => {
+    const ot = books.filter((b) => b.testament === "OT");
+    const nt = books.filter((b) => b.testament === "NT");
+    return { ot, nt };
+  }, [books]);
+
+  const chapterIndex = selectedChapter ?? null;
+  const prevChapter = chapterIndex && chapterIndex > 1 ? chapterIndex - 1 : null;
+  const nextChapter =
+    chapterIndex && chapters.length > 0 && chapterIndex < chapters.length ? chapterIndex + 1 : null;
+
+  const onResultClick = (v: BibleVerse) => {
+    setQuery("");
+    setResults(null);
+    openBook(v.book);
+    openChapter(v.book, v.chapter, v.verse);
+  };
+
+  const readerActive = selectedChapter != null;
+
+  // ── Render: book navigator ──
+  const Navigator = (
+    <div
+      className={`${readerActive ? "hidden md:flex" : "flex"} w-full md:w-72 shrink-0 flex-col overflow-y-auto`}
+      style={{ borderRight: "1px solid var(--border)" }}
+    >
+      {booksError && (
+        <div className="p-4 text-sm" style={{ color: "var(--danger)" }}>
+          {booksError}
+        </div>
+      )}
+
+      {selectedBook && chapters.length > 0 ? (
+        // Chapter grid for the selected book
+        <div className="p-3">
+          <button
+            onClick={() => {
+              setSelectedBook(null);
+              setChapters([]);
+            }}
+            className="text-sm mb-3 flex items-center gap-1"
+            style={{ color: "var(--accent-light)" }}
+          >
+            ← All books
+          </button>
+          <div className="text-sm font-semibold mb-2" style={{ color: "var(--text-primary)" }}>
+            {selectedBook}
+          </div>
+          <div className="grid grid-cols-5 gap-1.5">
+            {chapters.map((c) => (
+              <button
+                key={c.chapter}
+                onClick={() => openChapter(selectedBook, c.chapter)}
+                className="aspect-square rounded-md text-sm flex items-center justify-center transition-colors"
+                style={{
+                  background: selectedChapter === c.chapter ? "var(--accent)" : "var(--bg-tertiary)",
+                  color: selectedChapter === c.chapter ? "#fff" : "var(--text-secondary)",
+                }}
+              >
+                {c.chapter}
+              </button>
+            ))}
+          </div>
+        </div>
+      ) : (
+        // Book list grouped by testament
+        <div className="p-2">
+          {[
+            { label: "Old Testament", list: testaments.ot },
+            { label: "New Testament", list: testaments.nt },
+          ].map((group) => (
+            <div key={group.label} className="mb-3">
+              <div
+                className="text-xs font-semibold uppercase tracking-wider px-2 py-1.5"
+                style={{ color: "var(--text-muted)" }}
+              >
+                {group.label}
+              </div>
+              {group.list.map((b) => (
+                <button
+                  key={b.key}
+                  onClick={() => openBook(b.key)}
+                  className="w-full text-left px-3 py-1.5 rounded-md text-sm transition-colors"
+                  style={{
+                    background: selectedBook === b.key ? "var(--bg-active)" : "transparent",
+                    color: selectedBook === b.key ? "var(--text-primary)" : "var(--text-secondary)",
+                  }}
+                >
+                  {b.name}
+                </button>
+              ))}
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+
+  // ── Render: reader pane ──
+  const Reader = (
+    <div className={`${readerActive ? "flex" : "hidden md:flex"} flex-1 flex-col min-w-0`}>
+      {!readerActive ? (
+        <div className="flex-1 flex items-center justify-center p-8 text-center">
+          <div>
+            <div className="text-5xl mb-3">📖</div>
+            <p style={{ color: "var(--text-muted)" }}>
+              Choose a book and chapter to start reading.
+            </p>
+          </div>
+        </div>
+      ) : (
+        <>
+          {/* Reader header */}
+          <div
+            className="flex items-center gap-3 px-4 py-3 shrink-0"
+            style={{ borderBottom: "1px solid var(--border)" }}
+          >
+            <button
+              onClick={() => {
+                setSelectedChapter(null);
+                openBook(selectedBook!);
+              }}
+              className="md:hidden text-sm"
+              style={{ color: "var(--accent-light)" }}
+            >
+              ← Books
+            </button>
+            <h2 className="text-lg font-semibold flex-1 min-w-0 truncate" style={{ color: "var(--text-primary)" }}>
+              {selectedBook} {selectedChapter}
+            </h2>
+            <div className="flex items-center gap-1">
+              <button
+                onClick={() => setFontScale((s) => Math.max(0.8, s - 0.1))}
+                className="w-7 h-7 rounded text-sm"
+                style={{ background: "var(--bg-tertiary)", color: "var(--text-secondary)" }}
+                title="Smaller text"
+              >
+                A−
+              </button>
+              <button
+                onClick={() => setFontScale((s) => Math.min(1.6, s + 0.1))}
+                className="w-7 h-7 rounded text-sm"
+                style={{ background: "var(--bg-tertiary)", color: "var(--text-secondary)" }}
+                title="Larger text"
+              >
+                A+
+              </button>
+            </div>
+          </div>
+
+          {/* Verses */}
+          <div className="flex-1 overflow-y-auto px-4 md:px-8 py-6">
+            {readerLoading ? (
+              <p style={{ color: "var(--text-muted)" }}>Loading…</p>
+            ) : readerError ? (
+              <div className="text-center py-8">
+                <p className="mb-3" style={{ color: "var(--danger)" }}>{readerError}</p>
+                <button
+                  onClick={() => openChapter(selectedBook!, selectedChapter!)}
+                  className="px-4 py-2 rounded-md text-sm font-medium"
+                  style={{ background: "var(--accent)", color: "#fff" }}
+                >
+                  Retry
+                </button>
+              </div>
+            ) : (
+              <div className="max-w-2xl mx-auto leading-relaxed" style={{ fontSize: `${fontScale}rem` }}>
+                {verses.map((v) => (
+                  <div
+                    key={v.verse}
+                    ref={(el) => {
+                      verseRefs.current[v.verse] = el;
+                    }}
+                    className="mb-2 rounded px-1 transition-colors"
+                    style={{
+                      background: highlightVerse === v.verse ? "var(--bg-active)" : "transparent",
+                    }}
+                  >
+                    <sup className="mr-1.5 font-semibold" style={{ color: "var(--accent-light)" }}>
+                      {v.verse}
+                    </sup>
+                    <span style={{ color: "var(--text-primary)" }}>{v.text}</span>
+                  </div>
+                ))}
+
+                {/* Prev/Next chapter */}
+                <div className="flex items-center justify-between mt-8 pt-4" style={{ borderTop: "1px solid var(--border)" }}>
+                  <button
+                    disabled={!prevChapter}
+                    onClick={() => prevChapter && openChapter(selectedBook!, prevChapter)}
+                    className="px-3 py-1.5 rounded-md text-sm disabled:opacity-30"
+                    style={{ background: "var(--bg-tertiary)", color: "var(--text-secondary)" }}
+                  >
+                    ← Chapter {prevChapter ?? ""}
+                  </button>
+                  <button
+                    disabled={!nextChapter}
+                    onClick={() => nextChapter && openChapter(selectedBook!, nextChapter)}
+                    className="px-3 py-1.5 rounded-md text-sm disabled:opacity-30"
+                    style={{ background: "var(--bg-tertiary)", color: "var(--text-secondary)" }}
+                  >
+                    Chapter {nextChapter ?? ""} →
+                  </button>
+                </div>
+              </div>
+            )}
+          </div>
+        </>
+      )}
+    </div>
+  );
+
+  return (
+    <div className="flex flex-col h-full min-h-0">
+      {/* Top bar: verse-of-the-day + search */}
+      <div className="px-4 py-3 shrink-0 flex flex-col gap-2" style={{ borderBottom: "1px solid var(--border)" }}>
+        {votd && (
+          <div className="text-sm" style={{ color: "var(--text-secondary)" }}>
+            <span className="font-semibold" style={{ color: "var(--accent-light)" }}>
+              Verse of the day:
+            </span>{" "}
+            <button
+              className="italic hover:underline"
+              onClick={() => onResultClick(votd)}
+              title="Open passage"
+            >
+              “{votd.text}” — {formatRef(votd.book, votd.chapter, votd.verse)}
+            </button>
+          </div>
+        )}
+        <input
+          value={query}
+          onChange={(e) => setQuery(e.target.value)}
+          placeholder="Search the full text…"
+          className="w-full px-3 py-2 rounded-md text-sm outline-none"
+          style={{ background: "var(--bg-tertiary)", color: "var(--text-primary)", border: "1px solid var(--border)" }}
+        />
+      </div>
+
+      {/* Body: either search results, or navigator + reader */}
+      {results !== null || searching ? (
+        <div className="flex-1 overflow-y-auto p-4">
+          {searching ? (
+            <p style={{ color: "var(--text-muted)" }}>Searching…</p>
+          ) : results && results.length > 0 ? (
+            <div className="max-w-2xl mx-auto space-y-2">
+              <p className="text-xs" style={{ color: "var(--text-muted)" }}>
+                {results.length} result{results.length !== 1 ? "s" : ""}
+              </p>
+              {results.map((v, i) => (
+                <button
+                  key={`${v.book}-${v.chapter}-${v.verse}-${i}`}
+                  onClick={() => onResultClick(v)}
+                  className="w-full text-left p-3 rounded-lg transition-colors"
+                  style={{ background: "var(--bg-tertiary)" }}
+                >
+                  <div className="text-xs font-semibold mb-1" style={{ color: "var(--accent-light)" }}>
+                    {formatRef(v.book, v.chapter, v.verse)}
+                  </div>
+                  <div className="text-sm" style={{ color: "var(--text-secondary)" }}>
+                    {v.snippet || v.text}
+                  </div>
+                </button>
+              ))}
+            </div>
+          ) : (
+            <p className="text-center py-8" style={{ color: "var(--text-muted)" }}>
+              No results for “{query}”.
+            </p>
+          )}
+        </div>
+      ) : (
+        <div className="flex-1 flex min-h-0">
+          {Navigator}
+          {Reader}
+        </div>
+      )}
+    </div>
+  );
+}
