@@ -44,6 +44,8 @@ model Invite {
   createdBy String
   usedBy    String?
   usedAt    DateTime?
+  sentTo    String?
+  sentAt    DateTime?
   expiresAt DateTime
   createdAt DateTime  @default(now())
   team      Team      @relation(fields: [teamId], references: [id], onDelete: Cascade)
