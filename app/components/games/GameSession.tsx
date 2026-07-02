@@ -17,7 +17,12 @@ import {
 } from "../../lib/game-service";
 import GameLobby from "./GameLobby";
 import GamePlay from "./GamePlay";
+import QuestionReveal from "./QuestionReveal";
 import GameLeaderboard from "./GameLeaderboard";
+
+// Total time the reveal interstitial plays before auto-advancing (host opt-in):
+// 4.5s histogram beat + 5.5s standings beat
+const AUTO_ADVANCE_MS = 10_000;
 
 type Phase = "lobby" | "countdown" | "question" | "reveal" | "finished";
 
@@ -71,6 +76,7 @@ export default function GameSessionView({
     { pubkey: string; displayName: string; score: number }[]
   >([]);
   const [advancing, setAdvancing] = useState(false);
+  const [autoAdvance, setAutoAdvance] = useState(false);
   const joinedRef = useRef(false);
 
   const myPubkey = keys?.publicKey;
@@ -206,6 +212,15 @@ export default function GameSessionView({
     }
   }, [signer, gameId, sessionId]);
 
+  // Host auto-advance: move on after the reveal interstitial has played out
+  useEffect(() => {
+    if (phase !== "reveal" || !isHost || !autoAdvance) return;
+    const t = setTimeout(() => {
+      handleAdvance();
+    }, AUTO_ADVANCE_MS);
+    return () => clearTimeout(t);
+  }, [phase, isHost, autoAdvance, handleAdvance]);
+
   if (!hydrated) {
     return (
       <div className="flex-1 flex items-center justify-center" style={{ color: "var(--text-muted)" }}>
@@ -238,7 +253,25 @@ export default function GameSessionView({
     return <CountdownScreen deadline={deadline} questionIndex={questionIndex} totalQuestions={totalQuestions} />;
   }
 
-  if ((phase === "question" || phase === "reveal") && question) {
+  if (phase === "reveal" && question && reveal) {
+    return (
+      <QuestionReveal
+        key={`reveal-${question.id}`}
+        question={question}
+        questionIndex={questionIndex}
+        totalQuestions={totalQuestions}
+        reveal={reveal}
+        myPubkey={myPubkey}
+        isHost={isHost}
+        advancing={advancing}
+        autoAdvance={autoAdvance}
+        onToggleAutoAdvance={setAutoAdvance}
+        onAdvance={handleAdvance}
+      />
+    );
+  }
+
+  if (phase === "question" && question) {
     return (
       <GamePlay
         key={question.id}
@@ -252,7 +285,6 @@ export default function GameSessionView({
         answeredCount={answeredCount}
         totalPlayers={players.length}
         alreadyAnswered={alreadyAnswered}
-        reveal={reveal}
         isHost={isHost}
         advancing={advancing}
         onAdvance={handleAdvance}
