@@ -7,6 +7,7 @@
 // lobby → countdown → question → reveal → … → finished
 
 import { useState, useEffect, useRef, useCallback } from "react";
+import { motion, useReducedMotion } from "framer-motion";
 import { useAppStore } from "../../lib/store";
 import {
   joinSession,
@@ -312,6 +313,7 @@ function CountdownScreen({
   totalQuestions: number;
 }) {
   const [now, setNow] = useState(() => Date.now());
+  const reducedMotion = useReducedMotion();
 
   useEffect(() => {
     const interval = setInterval(() => setNow(Date.now()), 100);
@@ -322,20 +324,34 @@ function CountdownScreen({
 
   return (
     <div className="flex-1 flex flex-col items-center justify-center" style={{ background: "var(--bg-primary)" }}>
-      <p className="text-sm mb-6" style={{ color: "var(--text-muted)" }}>
+      <motion.p
+        className="text-sm mb-6"
+        style={{ color: "var(--text-muted)" }}
+        initial={reducedMotion ? false : { opacity: 0, y: -10 }}
+        animate={{ opacity: 1, y: 0 }}
+      >
         Question {questionIndex + 1}
         {totalQuestions > 0 ? ` of ${totalQuestions}` : ""}
-      </p>
-      <div
+      </motion.p>
+      <motion.div
         key={secondsLeft}
-        className="text-8xl font-bold animate-ping"
-        style={{ color: "var(--accent)", animationDuration: "1s", animationIterationCount: 1 }}
+        className="text-8xl font-bold"
+        style={{ color: "var(--accent)" }}
+        initial={reducedMotion ? false : { scale: 2.4, opacity: 0 }}
+        animate={{ scale: 1, opacity: 1 }}
+        transition={{ type: "spring", stiffness: 260, damping: 18 }}
       >
         {secondsLeft}
-      </div>
-      <p className="text-lg mt-8 font-semibold" style={{ color: "var(--text-primary)" }}>
+      </motion.div>
+      <motion.p
+        className="text-lg mt-8 font-semibold"
+        style={{ color: "var(--text-primary)" }}
+        initial={reducedMotion ? false : { opacity: 0 }}
+        animate={{ opacity: 1 }}
+        transition={{ delay: 0.2 }}
+      >
         Get ready…
-      </p>
+      </motion.p>
     </div>
   );
 }

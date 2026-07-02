@@ -6,6 +6,7 @@
 //   closes, GameSession swaps this out for the QuestionReveal interstitial.
 
 import { useState, useEffect, useCallback } from "react";
+import { motion, useReducedMotion } from "framer-motion";
 import { useAppStore } from "../../lib/store";
 import { submitAnswer, type PublicQuestion } from "../../lib/game-service";
 
@@ -45,6 +46,7 @@ export default function GamePlay({
 }: Props) {
   const keys = useAppStore((s) => s.keys);
   const signer = useAppStore((s) => s.signer);
+  const reducedMotion = useReducedMotion();
   const [selectedIndex, setSelectedIndex] = useState<number | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [now, setNow] = useState(() => Date.now());
@@ -96,9 +98,18 @@ export default function GamePlay({
           <span className="text-sm" style={{ color: "var(--text-muted)" }}>
             {answeredCount}/{totalPlayers || "?"} answered
           </span>
-          <div className="text-2xl font-bold font-mono w-12 text-center" style={{ color: timerColor }}>
+          <motion.div
+            className="text-2xl font-bold font-mono w-12 text-center"
+            style={{ color: timerColor }}
+            animate={
+              !reducedMotion && timeLeft <= 5 && timeLeft > 0 && !hasAnswered
+                ? { scale: [1, 1.25, 1] }
+                : { scale: 1 }
+            }
+            transition={{ duration: 0.5, repeat: timeLeft <= 5 && timeLeft > 0 ? Infinity : 0 }}
+          >
             {timeLeft}
-          </div>
+          </motion.div>
         </div>
       </div>
 
@@ -113,11 +124,17 @@ export default function GamePlay({
       <div className="flex-1 flex flex-col items-center justify-center p-8">
         <div className="w-full max-w-3xl">
           {/* Question text */}
-          <div className="text-center mb-8 px-8 py-6 rounded-xl" style={{ background: "var(--bg-secondary)" }}>
+          <motion.div
+            className="text-center mb-8 px-8 py-6 rounded-xl"
+            style={{ background: "var(--bg-secondary)" }}
+            initial={reducedMotion ? false : { opacity: 0, y: -16 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.3 }}
+          >
             <h2 className="text-2xl font-bold" style={{ color: "var(--text-primary)" }}>
               {question.text}
             </h2>
-          </div>
+          </motion.div>
 
           {/* Answer grid */}
           <div className="grid grid-cols-2 gap-4">
@@ -127,28 +144,45 @@ export default function GamePlay({
               const bg = optionColors[i % optionColors.length];
 
               return (
-                <button
+                <motion.button
                   key={i}
                   onClick={() => handleAnswer(i)}
                   disabled={hasAnswered || timeUp || submitting}
-                  className="relative p-6 rounded-xl text-white font-bold text-lg transition-all hover:scale-[1.02] active:scale-[0.98] disabled:cursor-default"
+                  className="relative p-6 rounded-xl text-white font-bold text-lg disabled:cursor-default"
                   style={{
                     background: bg,
-                    opacity: dimmed ? 0.45 : 1,
-                    transform: isSelected ? "scale(1.02)" : undefined,
                     boxShadow: isSelected ? `0 0 0 4px white, 0 0 0 6px ${bg}` : undefined,
                   }}
+                  initial={reducedMotion ? false : { opacity: 0, y: 24, scale: 0.96 }}
+                  animate={{
+                    opacity: dimmed ? 0.45 : 1,
+                    y: 0,
+                    scale: isSelected ? 1.03 : 1,
+                  }}
+                  transition={{
+                    type: "spring",
+                    stiffness: 300,
+                    damping: 22,
+                    delay: reducedMotion ? 0 : 0.1 + i * 0.07,
+                  }}
+                  whileHover={!hasAnswered && !timeUp && !reducedMotion ? { scale: 1.02 } : undefined}
+                  whileTap={!hasAnswered && !timeUp && !reducedMotion ? { scale: 0.95 } : undefined}
                 >
                   <span className="text-2xl mr-3 opacity-50">{optionIcons[i % optionIcons.length]}</span>
                   {option}
-                </button>
+                </motion.button>
               );
             })}
           </div>
 
           {/* Feedback */}
           {hasAnswered && (
-            <div className="text-center mt-6">
+            <motion.div
+              className="text-center mt-6"
+              initial={reducedMotion ? false : { opacity: 0, scale: 0.6 }}
+              animate={{ opacity: 1, scale: 1 }}
+              transition={{ type: "spring", stiffness: 300, damping: 15 }}
+            >
               <div className="text-4xl mb-2">🔒</div>
               <div className="text-xl font-bold" style={{ color: "var(--accent)" }}>
                 Answer locked in!
@@ -156,15 +190,20 @@ export default function GamePlay({
               <div className="text-sm mt-1" style={{ color: "var(--text-muted)" }}>
                 Waiting for the reveal…
               </div>
-            </div>
+            </motion.div>
           )}
           {timeUp && !hasAnswered && (
-            <div className="text-center mt-6">
+            <motion.div
+              className="text-center mt-6"
+              initial={reducedMotion ? false : { opacity: 0, scale: 0.6 }}
+              animate={{ opacity: 1, scale: 1 }}
+              transition={{ type: "spring", stiffness: 300, damping: 15 }}
+            >
               <div className="text-4xl mb-2">⏰</div>
               <div className="text-xl font-bold" style={{ color: "#f59e0b" }}>
                 Time&apos;s up!
               </div>
-            </div>
+            </motion.div>
           )}
 
           {/* Host: skip */}
