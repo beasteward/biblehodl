@@ -81,7 +81,6 @@ function GameDetail({
   const keys = useAppStore((s) => s.keys);
   const signer = useAppStore((s) => s.signer);
   const [startingSession, setStartingSession] = useState(false);
-  const isCreator = game.createdBy === keys?.publicKey;
 
   const handleStartSession = async () => {
     if (!keys || !signer) return;
@@ -132,7 +131,7 @@ function GameDetail({
               🎮 Join Game
             </button>
           )}
-          {isCreator && !activeLobby && (
+          {!activeLobby && (
             <button
               onClick={handleStartSession}
               disabled={startingSession}

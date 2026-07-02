@@ -99,6 +99,9 @@ model GameSession {
   id                   String   @id @default(cuid())
   gameId               String
   status               String   @default("lobby")
+  phase                String   @default("lobby")
+  phaseEndsAt          DateTime?
+  hostPubkey           String   @default("")
   currentQuestionIndex Int      @default(-1)
   questionStartedAt    DateTime?
   startedAt            DateTime?
@@ -117,6 +120,8 @@ model Player {
   pubkey      String
   displayName String
   score       Int         @default(0)
+  streak      Int         @default(0)
+  lastRank    Int?
   joinedAt    DateTime    @default(now())
   session     GameSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
 

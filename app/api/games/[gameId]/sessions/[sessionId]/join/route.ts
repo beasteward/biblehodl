@@ -3,7 +3,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "../../../../../../lib/prisma";
 import { getPubkeyFromRequest } from "../../../../../../lib/auth";
-import { emitGameEvent } from "../events/route";
+import { emitGameEvent } from "../../../../../../lib/game-engine";
 
 export async function POST(
   request: NextRequest,
@@ -26,6 +26,13 @@ export async function POST(
     return NextResponse.json({ error: "Session not found" }, { status: 404 });
   }
   if (session.status !== "lobby") {
+    // Allow existing players to reconnect mid-game; block new joins
+    const existing = await prisma.player.findUnique({
+      where: { sessionId_pubkey: { sessionId, pubkey } },
+    });
+    if (existing) {
+      return NextResponse.json(existing, { status: 200 });
+    }
     return NextResponse.json({ error: "Cannot join — game already in progress or finished" }, { status: 400 });
   }
 

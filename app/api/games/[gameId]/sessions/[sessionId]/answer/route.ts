@@ -1,9 +1,17 @@
 // POST /api/games/[gameId]/sessions/[sessionId]/answer — submit an answer
+//
+// Server-authoritative: only accepted while the session phase is "question",
+// only for the CURRENT question, and only until the deadline (+ grace).
+// Correctness/score are NOT returned — they're revealed to everyone at once
+// via the "question-closed" SSE event when the question closes.
 
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "../../../../../../lib/prisma";
 import { getPubkeyFromRequest } from "../../../../../../lib/auth";
-import { emitGameEvent } from "../events/route";
+import { emitGameEvent, maybeCloseEarly, ANSWER_GRACE_MS } from "../../../../../../lib/game-engine";
+
+const MAX_STREAK_BONUS_STEPS = 5;
+const STREAK_BONUS_PER_STEP = 50;
 
 export async function POST(
   request: NextRequest,
@@ -22,16 +30,31 @@ export async function POST(
     return NextResponse.json({ error: "questionId and selectedIndex required" }, { status: 400 });
   }
 
-  // Verify session is active
   const session = await prisma.gameSession.findUnique({
     where: { id: sessionId },
     include: { game: true },
   });
-  if (!session || session.status !== "active") {
-    return NextResponse.json({ error: "Game is not active" }, { status: 400 });
+  if (!session || session.phase !== "question") {
+    return NextResponse.json({ error: "No question is open" }, { status: 400 });
   }
 
-  // Verify player is in the session
+  // Must answer the CURRENT question
+  const question = await prisma.question.findUnique({ where: { id: questionId } });
+  if (!question || question.gameId !== session.gameId) {
+    return NextResponse.json({ error: "Question not found" }, { status: 404 });
+  }
+  if (question.order !== session.currentQuestionIndex) {
+    return NextResponse.json({ error: "Not the current question" }, { status: 400 });
+  }
+
+  // Deadline enforcement (server clock + small grace for network latency)
+  const timeLimitMs = session.game.timePerQuestion * 1000;
+  const startedAt = session.questionStartedAt?.getTime() ?? 0;
+  const responseTimeMs = Date.now() - startedAt;
+  if (!startedAt || responseTimeMs > timeLimitMs + ANSWER_GRACE_MS) {
+    return NextResponse.json({ error: "Time is up" }, { status: 400 });
+  }
+
   const player = await prisma.player.findUnique({
     where: { sessionId_pubkey: { sessionId, pubkey } },
   });
@@ -39,7 +62,6 @@ export async function POST(
     return NextResponse.json({ error: "You are not in this game" }, { status: 403 });
   }
 
-  // Check for duplicate answer
   const existing = await prisma.answer.findUnique({
     where: { sessionId_questionId_playerPubkey: { sessionId, questionId, playerPubkey: pubkey } },
   });
@@ -47,25 +69,20 @@ export async function POST(
     return NextResponse.json({ error: "Already answered this question" }, { status: 400 });
   }
 
-  // Get the question and check correctness
-  const question = await prisma.question.findUnique({ where: { id: questionId } });
-  if (!question) {
-    return NextResponse.json({ error: "Question not found" }, { status: 404 });
-  }
-
   const correct = selectedIndex === question.correctIndex;
 
-  // Calculate response time and score
-  const responseTimeMs = session.questionStartedAt
-    ? Date.now() - session.questionStartedAt.getTime()
+  // Speed-based score (100–1000) + streak bonus, computed server-side
+  const clampedTime = Math.min(Math.max(responseTimeMs, 0), timeLimitMs);
+  const baseScore = correct
+    ? Math.max(100, Math.round(1000 - (clampedTime / timeLimitMs) * 900))
     : 0;
-  const timeLimit = session.game.timePerQuestion * 1000;
-  const score = correct
-    ? Math.max(100, Math.round(1000 - (responseTimeMs / timeLimit) * 900))
+  const newStreak = correct ? player.streak + 1 : 0;
+  const streakBonus = correct
+    ? Math.min(newStreak - 1, MAX_STREAK_BONUS_STEPS) * STREAK_BONUS_PER_STEP
     : 0;
+  const score = baseScore + streakBonus;
 
-  // Save answer
-  const answer = await prisma.answer.create({
+  await prisma.answer.create({
     data: {
       sessionId,
       questionId,
@@ -77,22 +94,24 @@ export async function POST(
     },
   });
 
-  // Update player total score
   await prisma.player.update({
     where: { id: player.id },
-    data: { score: player.score + score },
+    data: { score: player.score + score, streak: newStreak },
   });
 
-  // Emit that someone answered (without revealing their answer to others)
+  const answeredCount = await prisma.answer.count({ where: { sessionId, questionId } });
+
+  // Broadcast that someone answered (without revealing what they picked)
   emitGameEvent(sessionId, "player-answered", {
     pubkey,
     questionId,
+    answeredCount,
   });
 
-  return NextResponse.json({
-    answer,
-    correct,
-    score,
-    correctIndex: question.correctIndex,
-  });
+  // Close early if everyone has answered (fire-and-forget; SSE will notify)
+  maybeCloseEarly(sessionId, questionId).catch((err) =>
+    console.error(`[games] early close failed for ${sessionId}:`, err)
+  );
+
+  return NextResponse.json({ accepted: true, answeredCount });
 }
