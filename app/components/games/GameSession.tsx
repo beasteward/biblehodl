@@ -12,6 +12,7 @@ import { useAppStore } from "../../lib/store";
 import {
   joinSession,
   advanceQuestion,
+  createSession,
   fetchSessionState,
   type PublicQuestion,
   type SessionLeaderboardEntry,
@@ -47,6 +48,7 @@ interface Props {
   isAdmin: boolean;
   totalQuestions: number;
   onExit: () => void;
+  onPlayAgain: (newSessionId: string) => void;
 }
 
 export default function GameSessionView({
@@ -57,6 +59,7 @@ export default function GameSessionView({
   isAdmin,
   totalQuestions: initialTotal,
   onExit,
+  onPlayAgain,
 }: Props) {
   const keys = useAppStore((s) => s.keys);
   const signer = useAppStore((s) => s.signer);
@@ -78,6 +81,7 @@ export default function GameSessionView({
   >([]);
   const [advancing, setAdvancing] = useState(false);
   const [autoAdvance, setAutoAdvance] = useState(false);
+  const [playingAgain, setPlayingAgain] = useState(false);
   const joinedRef = useRef(false);
 
   const myPubkey = keys?.publicKey;
@@ -193,11 +197,15 @@ export default function GameSessionView({
           setPhase("finished");
           setFinalLeaderboard(data.leaderboard);
           break;
+        case "play-again":
+          // Host started a rematch — everyone hops to the new lobby
+          onPlayAgain(data.newSessionId);
+          break;
       }
     };
 
     return () => es.close();
-  }, [hydrated, gameId, sessionId]);
+  }, [hydrated, gameId, sessionId, onPlayAgain]);
 
   // ── Host controls ──
   const handleAdvance = useCallback(async () => {
@@ -212,6 +220,19 @@ export default function GameSessionView({
       setAdvancing(false);
     }
   }, [signer, gameId, sessionId]);
+
+  // Host: start a rematch with the same game; everyone else follows via SSE
+  const handlePlayAgain = useCallback(async () => {
+    if (!signer) return;
+    setPlayingAgain(true);
+    try {
+      const session = await createSession(gameId, signer, sessionId);
+      onPlayAgain(session.id);
+    } catch (err) {
+      console.error("Failed to start rematch:", err);
+      setPlayingAgain(false);
+    }
+  }, [signer, gameId, sessionId, onPlayAgain]);
 
   // Host auto-advance: move on after the reveal interstitial has played out
   useEffect(() => {
@@ -246,7 +267,14 @@ export default function GameSessionView({
 
   if (phase === "finished") {
     return (
-      <GameLeaderboard leaderboard={finalLeaderboard} gameTitle={gameTitle} onBack={onExit} />
+      <GameLeaderboard
+        leaderboard={finalLeaderboard}
+        gameTitle={gameTitle}
+        onBack={onExit}
+        isHost={isHost}
+        playingAgain={playingAgain}
+        onPlayAgain={handlePlayAgain}
+      />
     );
   }
 

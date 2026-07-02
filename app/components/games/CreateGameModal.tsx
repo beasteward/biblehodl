@@ -1,8 +1,10 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useRef } from "react";
 import { useAppStore } from "../../lib/store";
-import { createGame, type GameQuestion } from "../../lib/game-service";
+import { createGame, generateBibleQuestions, type GameQuestion } from "../../lib/game-service";
+import { uploadBlob, getBlobUrl } from "../../lib/blossom";
+import { fetchBooks, type BibleBook } from "../../lib/bible-service";
 
 interface Props {
   onClose: () => void;
@@ -44,6 +46,26 @@ function QuestionEditor({
   };
 
   const optionColors = ["#e74c3c", "#3498db", "#f39c12", "#2ecc71", "#9b59b6", "#1abc9c"];
+  const signer = useAppStore((s) => s.signer);
+  const [uploading, setUploading] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  const handleImageSelect = async (file: File | undefined) => {
+    if (!file || !signer) return;
+    if (!file.type.startsWith("image/")) return;
+    setUploading(true);
+    try {
+      const blob = await uploadBlob(file, signer);
+      // Always build the URL ourselves — Blossom reports http:// blob URLs
+      // which the https app can't load (mixed content)
+      onChange({ ...question, imageUrl: getBlobUrl(blob.sha256) });
+    } catch (err) {
+      console.error("Image upload failed:", err);
+    } finally {
+      setUploading(false);
+      if (fileInputRef.current) fileInputRef.current.value = "";
+    }
+  };
 
   return (
     <div
@@ -116,14 +138,52 @@ function QuestionEditor({
         ))}
       </div>
 
-      {question.options.length < 6 && (
-        <button
-          onClick={addOption}
-          className="text-xs hover:opacity-80"
-          style={{ color: "var(--accent)" }}
-        >
-          + Add option
-        </button>
+      <div className="flex items-center gap-4">
+        {question.options.length < 6 && (
+          <button
+            onClick={addOption}
+            className="text-xs hover:opacity-80"
+            style={{ color: "var(--accent)" }}
+          >
+            + Add option
+          </button>
+        )}
+        <input
+          ref={fileInputRef}
+          type="file"
+          accept="image/*"
+          className="hidden"
+          onChange={(e) => handleImageSelect(e.target.files?.[0])}
+        />
+        {!question.imageUrl && (
+          <button
+            onClick={() => fileInputRef.current?.click()}
+            disabled={uploading}
+            className="text-xs hover:opacity-80 disabled:opacity-50"
+            style={{ color: "var(--accent)" }}
+          >
+            {uploading ? "Uploading…" : "🖼 Add image"}
+          </button>
+        )}
+      </div>
+
+      {question.imageUrl && (
+        <div className="flex items-center gap-3 mt-3">
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img
+            src={question.imageUrl}
+            alt="Question"
+            className="rounded-lg object-cover"
+            style={{ height: "64px", width: "96px", border: "1px solid var(--border)" }}
+          />
+          <button
+            onClick={() => onChange({ ...question, imageUrl: null })}
+            className="text-xs hover:opacity-80"
+            style={{ color: "var(--danger)" }}
+          >
+            ✕ Remove image
+          </button>
+        </div>
       )}
 
       <div className="text-xs mt-2" style={{ color: "var(--text-muted)" }}>
@@ -136,6 +196,7 @@ function QuestionEditor({
 export default function CreateGameModal({ onClose, onCreated }: Props) {
   const keys = useAppStore((s) => s.keys);
   const signer = useAppStore((s) => s.signer);
+  const bibleEnabled = useAppStore((s) => s.bibleEnabled);
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
   const [timePerQuestion, setTimePerQuestion] = useState(20);
@@ -144,6 +205,50 @@ export default function CreateGameModal({ onClose, onCreated }: Props) {
   ]);
   const [creating, setCreating] = useState(false);
   const [error, setError] = useState("");
+
+  // ── Bible trivia generator ──
+  const [showGenerator, setShowGenerator] = useState(false);
+  const [books, setBooks] = useState<BibleBook[] | null>(null);
+  const [genBook, setGenBook] = useState("");
+  const [genCount, setGenCount] = useState(10);
+  const [generating, setGenerating] = useState(false);
+
+  const openGenerator = async () => {
+    setShowGenerator((v) => !v);
+    if (!books && signer) {
+      try {
+        setBooks(await fetchBooks(signer));
+      } catch (err) {
+        console.error("Failed to load books:", err);
+      }
+    }
+  };
+
+  const handleGenerate = async () => {
+    if (!signer || generating) return;
+    setError("");
+    setGenerating(true);
+    try {
+      const res = await generateBibleQuestions(signer, {
+        book: genBook || null,
+        count: genCount,
+      });
+      setQuestions((prev) => {
+        // Replace the single untouched starter question; otherwise append
+        const isPristine =
+          prev.length === 1 && !prev[0].text.trim() && prev[0].options.every((o) => !o.trim());
+        return isPristine ? res.questions : [...prev, ...res.questions];
+      });
+      if (!title.trim()) {
+        setTitle(`Bible Trivia — ${res.source}`);
+      }
+      setShowGenerator(false);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to generate questions");
+    } finally {
+      setGenerating(false);
+    }
+  };
 
   const addQuestion = () => {
     setQuestions([...questions, { text: "", options: ["", "", "", ""], correctIndex: 0 }]);
@@ -252,14 +357,76 @@ export default function CreateGameModal({ onClose, onCreated }: Props) {
               <label className="text-sm font-medium" style={{ color: "var(--text-primary)" }}>
                 Questions ({questions.length})
               </label>
-              <button
-                onClick={addQuestion}
-                className="text-sm px-3 py-1 rounded"
-                style={{ background: "var(--bg-tertiary)", color: "var(--accent)" }}
-              >
-                + Add Question
-              </button>
+              <div className="flex items-center gap-2">
+                {bibleEnabled && (
+                  <button
+                    onClick={openGenerator}
+                    className="text-sm px-3 py-1 rounded"
+                    style={{ background: "var(--bg-tertiary)", color: "var(--accent)" }}
+                  >
+                    ✨ Bible Trivia
+                  </button>
+                )}
+                <button
+                  onClick={addQuestion}
+                  className="text-sm px-3 py-1 rounded"
+                  style={{ background: "var(--bg-tertiary)", color: "var(--accent)" }}
+                >
+                  + Add Question
+                </button>
+              </div>
             </div>
+
+            {showGenerator && (
+              <div
+                className="p-4 rounded-lg mb-3 space-y-3"
+                style={{ background: "var(--bg-tertiary)", border: "1px solid var(--accent)" }}
+              >
+                <div className="text-sm font-semibold" style={{ color: "var(--text-primary)" }}>
+                  ✨ Generate Bible trivia
+                </div>
+                <div className="text-xs" style={{ color: "var(--text-muted)" }}>
+                  Auto-generates multiple-choice questions from the CPDV Bible — complete the
+                  verse, name the book, and identify the reference. Questions are editable
+                  before you create the game.
+                </div>
+                <div className="flex items-center gap-3 flex-wrap">
+                  <select
+                    value={genBook}
+                    onChange={(e) => setGenBook(e.target.value)}
+                    className="px-3 py-1.5 rounded text-sm outline-none"
+                    style={{ background: "var(--bg-primary)", color: "var(--text-primary)", border: "1px solid var(--border)" }}
+                  >
+                    <option value="">Whole Bible</option>
+                    {(books || []).map((b) => (
+                      <option key={b.key} value={b.key}>
+                        {b.name}
+                      </option>
+                    ))}
+                  </select>
+                  <select
+                    value={genCount}
+                    onChange={(e) => setGenCount(Number(e.target.value))}
+                    className="px-3 py-1.5 rounded text-sm outline-none"
+                    style={{ background: "var(--bg-primary)", color: "var(--text-primary)", border: "1px solid var(--border)" }}
+                  >
+                    {[5, 10, 15, 20].map((n) => (
+                      <option key={n} value={n}>
+                        {n} questions
+                      </option>
+                    ))}
+                  </select>
+                  <button
+                    onClick={handleGenerate}
+                    disabled={generating}
+                    className="px-4 py-1.5 rounded text-sm font-medium disabled:opacity-50"
+                    style={{ background: "var(--accent)", color: "white" }}
+                  >
+                    {generating ? "Generating…" : "Generate"}
+                  </button>
+                </div>
+              </div>
+            )}
             <div className="space-y-3">
               {questions.map((q, i) => (
                 <QuestionEditor

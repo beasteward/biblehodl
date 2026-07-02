@@ -89,6 +89,17 @@ export default function QuestionReveal({
                   <h2 className="text-xl font-bold" style={{ color: "var(--text-primary)" }}>
                     {question.text}
                   </h2>
+                  {question.imageUrl && (
+                    <div className="flex justify-center mt-4">
+                      {/* eslint-disable-next-line @next/next/no-img-element */}
+                      <img
+                        src={question.imageUrl}
+                        alt="Question"
+                        className="rounded-lg object-contain"
+                        style={{ maxHeight: "140px", maxWidth: "100%" }}
+                      />
+                    </div>
+                  )}
                 </div>
 
                 {/* Histogram */}

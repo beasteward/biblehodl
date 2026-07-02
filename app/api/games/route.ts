@@ -59,6 +59,9 @@ export async function POST(request: NextRequest) {
         { status: 400 }
       );
     }
+    if (q.imageUrl !== undefined && q.imageUrl !== null && typeof q.imageUrl !== "string") {
+      return NextResponse.json({ error: "imageUrl must be a string" }, { status: 400 });
+    }
   }
 
   const game = await prisma.game.create({
@@ -68,12 +71,15 @@ export async function POST(request: NextRequest) {
       createdBy: pubkey,
       timePerQuestion: timePerQuestion || 20,
       questions: {
-        create: questions.map((q: { text: string; options: string[]; correctIndex: number }, i: number) => ({
-          text: q.text,
-          options: JSON.stringify(q.options),
-          correctIndex: q.correctIndex,
-          order: i,
-        })),
+        create: questions.map(
+          (q: { text: string; options: string[]; correctIndex: number; imageUrl?: string | null }, i: number) => ({
+            text: q.text,
+            options: JSON.stringify(q.options),
+            correctIndex: q.correctIndex,
+            imageUrl: q.imageUrl || null,
+            order: i,
+          })
+        ),
       },
     },
     include: {
