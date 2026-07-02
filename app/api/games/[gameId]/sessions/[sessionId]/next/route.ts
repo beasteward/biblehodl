@@ -1,9 +1,13 @@
-// POST /api/games/[gameId]/sessions/[sessionId]/next — advance to next question (admin only)
+// POST /api/games/[gameId]/sessions/[sessionId]/next — host control
+//
+// lobby/reveal → starts the next question (countdown → question, server-timed)
+// question     → closes the open question early (skip)
+// Delegates all phase transitions to the game engine.
 
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "../../../../../../lib/prisma";
 import { getPubkeyFromRequest } from "../../../../../../lib/auth";
-import { emitGameEvent } from "../events/route";
+import { advanceSession } from "../../../../../../lib/game-engine";
 
 export async function POST(
   request: NextRequest,
@@ -15,73 +19,26 @@ export async function POST(
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
-  // Verify admin
-  const game = await prisma.game.findUnique({ where: { id: gameId } });
-  if (!game || game.createdBy !== pubkey) {
-    return NextResponse.json({ error: "Only the game creator can advance questions" }, { status: 403 });
-  }
-
   const session = await prisma.gameSession.findUnique({
     where: { id: sessionId },
+    include: { game: { select: { createdBy: true } } },
   });
-  if (!session) {
+  if (!session || session.gameId !== gameId) {
     return NextResponse.json({ error: "Session not found" }, { status: 404 });
   }
 
-  const questionCount = await prisma.question.count({ where: { gameId } });
-  const nextIndex = session.currentQuestionIndex + 1;
-
-  if (nextIndex >= questionCount) {
-    // Game is finished
-    const updated = await prisma.gameSession.update({
-      where: { id: sessionId },
-      data: {
-        status: "finished",
-        finishedAt: new Date(),
-      },
-      include: {
-        players: { orderBy: { score: "desc" } },
-      },
-    });
-    emitGameEvent(sessionId, "game-finished", {
-      leaderboard: updated.players.map((p) => ({
-        pubkey: p.pubkey,
-        displayName: p.displayName,
-        score: p.score,
-      })),
-    });
-    return NextResponse.json({ ...updated, finished: true });
+  // Host = session creator (fallback: game author, for sessions created
+  // before hostPubkey existed)
+  const host = session.hostPubkey || session.game.createdBy;
+  if (host !== pubkey) {
+    return NextResponse.json({ error: "Only the host can control the game" }, { status: 403 });
   }
 
-  // Advance to next question
-  const updated = await prisma.gameSession.update({
-    where: { id: sessionId },
-    data: {
-      status: "active",
-      currentQuestionIndex: nextIndex,
-      questionStartedAt: new Date(),
-      startedAt: session.startedAt || new Date(),
-    },
-  });
-
-  // Get the current question (without correct answer for players)
-  const question = await prisma.question.findFirst({
-    where: { gameId, order: nextIndex },
-    select: { id: true, text: true, options: true, order: true },
-  });
-
-  const responseData = {
-    session: updated,
-    question: question
-      ? { ...question, options: JSON.parse(question.options) }
-      : null,
-  };
-
-  emitGameEvent(sessionId, "next-question", {
-    questionIndex: nextIndex,
-    question: responseData.question,
-    totalQuestions: questionCount,
-  });
-
-  return NextResponse.json(responseData);
+  try {
+    const result = await advanceSession(sessionId);
+    return NextResponse.json(result);
+  } catch (err) {
+    console.error(`[games] advance failed for ${sessionId}:`, err);
+    return NextResponse.json({ error: "Failed to advance game" }, { status: 500 });
+  }
 }

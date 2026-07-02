@@ -37,14 +37,14 @@ export async function POST(
   if (!game) {
     return NextResponse.json({ error: "Game not found" }, { status: 404 });
   }
-  if (game.createdBy !== pubkey) {
-    return NextResponse.json({ error: "Only the creator can start sessions" }, { status: 403 });
-  }
 
+  // Any authenticated member can host a session of any game.
+  // The session creator becomes the host (controls start/skip/next).
   const session = await prisma.gameSession.create({
     data: {
       gameId,
       status: "lobby",
+      hostPubkey: pubkey,
     },
     include: {
       players: true,

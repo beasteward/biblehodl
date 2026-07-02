@@ -11,6 +11,43 @@ export interface GameQuestion {
   correctIndex: number;
 }
 
+export interface SessionLeaderboardEntry {
+  pubkey: string;
+  displayName: string;
+  score: number;
+  gained: number;
+  correct: boolean | null;
+  streak: number;
+  rank: number;
+  prevRank: number | null;
+}
+
+export interface PublicQuestion {
+  id: string;
+  text: string;
+  options: string[];
+  order: number;
+  correctIndex?: number; // only present once revealed
+}
+
+export interface SessionState {
+  session: {
+    id: string;
+    status: string;
+    phase: "lobby" | "countdown" | "question" | "reveal" | "finished";
+    remainingMs: number | null;
+    currentQuestionIndex: number;
+    totalQuestions: number;
+    timePerQuestion: number;
+    gameTitle: string;
+    hostPubkey: string;
+  };
+  question: PublicQuestion | null;
+  distribution: number[] | null;
+  answeredPubkeys: string[];
+  leaderboard: SessionLeaderboardEntry[];
+}
+
 export interface Game {
   id: string;
   title: string;
@@ -111,13 +148,24 @@ export async function advanceQuestion(gameId: string, sessionId: string, signer:
   return res.json();
 }
 
+export async function fetchSessionState(
+  gameId: string,
+  sessionId: string
+): Promise<SessionState> {
+  const res = await fetch(`/api/games/${gameId}/sessions/${sessionId}/state`, {
+    cache: "no-store",
+  });
+  if (!res.ok) throw new Error("Failed to fetch session state");
+  return res.json();
+}
+
 export async function submitAnswer(
   gameId: string,
   sessionId: string,
   signer: Signer,
   questionId: string,
   selectedIndex: number
-) {
+): Promise<{ accepted: boolean; answeredCount: number }> {
   const res = await authFetch(signer, `/api/games/${gameId}/sessions/${sessionId}/answer`, {
     method: "POST",
     headers: JSON_HEADERS,

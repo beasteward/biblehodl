@@ -1,36 +1,24 @@
 // GET /api/games/[gameId]/sessions/[sessionId]/events — SSE stream for real-time game updates
-// Clients poll this endpoint; it streams events as they happen
+//
+// - Sends `id:` lines (per-session seq) so EventSource reconnects replay
+//   missed events via Last-Event-ID.
+// - Emits a `: ping` comment every 15s so reverse proxies don't reap the stream.
 
 import { NextRequest } from "next/server";
 import { prisma } from "../../../../../../lib/prisma";
+import {
+  subscribeToSession,
+  eventsSince,
+  recoverSession,
+  type GameEvent,
+} from "../../../../../../lib/game-engine";
 
-// In-memory event bus for game sessions
-type GameEvent = {
-  type: string;
-  data: unknown;
-  timestamp: number;
-};
+export const dynamic = "force-dynamic";
 
-const sessionEvents = new Map<string, GameEvent[]>();
-const sessionListeners = new Map<string, Set<(event: GameEvent) => void>>();
+const PING_INTERVAL_MS = 15_000;
 
-export function emitGameEvent(sessionId: string, type: string, data: unknown) {
-  const event: GameEvent = { type, data, timestamp: Date.now() };
-
-  // Store event
-  const events = sessionEvents.get(sessionId) || [];
-  events.push(event);
-  // Keep only last 100 events
-  if (events.length > 100) events.shift();
-  sessionEvents.set(sessionId, events);
-
-  // Notify listeners
-  const listeners = sessionListeners.get(sessionId);
-  if (listeners) {
-    for (const listener of listeners) {
-      listener(event);
-    }
-  }
+function frame(event: GameEvent): string {
+  return `id: ${event.seq}\ndata: ${JSON.stringify(event)}\n\n`;
 }
 
 export async function GET(
@@ -39,39 +27,48 @@ export async function GET(
 ) {
   const { sessionId } = await params;
 
-  // Verify session exists
   const session = await prisma.gameSession.findUnique({ where: { id: sessionId } });
   if (!session) {
     return new Response("Session not found", { status: 404 });
   }
 
+  // Re-arm timers if a timed phase is pending with no in-process timer
+  await recoverSession(sessionId);
+
+  const lastEventId = Number(request.headers.get("last-event-id") || 0) || 0;
+
   const encoder = new TextEncoder();
   const stream = new ReadableStream({
     start(controller) {
-      // Send initial connection event
-      controller.enqueue(encoder.encode(`data: ${JSON.stringify({ type: "connected", sessionId })}\n\n`));
-
-      const listener = (event: GameEvent) => {
+      let closed = false;
+      const send = (chunk: string) => {
+        if (closed) return;
         try {
-          controller.enqueue(encoder.encode(`data: ${JSON.stringify(event)}\n\n`));
+          controller.enqueue(encoder.encode(chunk));
         } catch {
-          // Client disconnected
+          closed = true;
         }
       };
 
-      // Register listener
-      if (!sessionListeners.has(sessionId)) {
-        sessionListeners.set(sessionId, new Set());
-      }
-      sessionListeners.get(sessionId)!.add(listener);
+      send(`data: ${JSON.stringify({ type: "connected", sessionId })}\n\n`);
 
-      // Cleanup on close
+      // Replay events missed during a reconnect
+      for (const event of eventsSince(sessionId, lastEventId)) {
+        send(frame(event));
+      }
+
+      const unsubscribe = subscribeToSession(sessionId, (event) => send(frame(event)));
+      const ping = setInterval(() => send(`: ping\n\n`), PING_INTERVAL_MS);
+
       request.signal.addEventListener("abort", () => {
-        sessionListeners.get(sessionId)?.delete(listener);
-        if (sessionListeners.get(sessionId)?.size === 0) {
-          sessionListeners.delete(sessionId);
+        closed = true;
+        unsubscribe();
+        clearInterval(ping);
+        try {
+          controller.close();
+        } catch {
+          // already closed
         }
-        controller.close();
       });
     },
   });
@@ -79,8 +76,9 @@ export async function GET(
   return new Response(stream, {
     headers: {
       "Content-Type": "text/event-stream",
-      "Cache-Control": "no-cache",
+      "Cache-Control": "no-cache, no-transform",
       Connection: "keep-alive",
+      "X-Accel-Buffering": "no",
     },
   });
 }
