@@ -77,6 +77,7 @@ export async function GET(
           text: question.text,
           options,
           order: question.order,
+          imageUrl: question.imageUrl || undefined,
           ...(revealed ? { correctIndex: question.correctIndex } : {}),
         }
       : null,

@@ -117,8 +117,14 @@ function clearTimer(sessionId: string) {
 
 // ─── Question payload helpers ───
 
-function publicQuestion(q: { id: string; text: string; options: string; order: number }) {
-  return { id: q.id, text: q.text, options: JSON.parse(q.options) as string[], order: q.order };
+function publicQuestion(q: { id: string; text: string; options: string; order: number; imageUrl?: string | null }) {
+  return {
+    id: q.id,
+    text: q.text,
+    options: JSON.parse(q.options) as string[],
+    order: q.order,
+    imageUrl: q.imageUrl || undefined,
+  };
 }
 
 async function computeLeaderboard(

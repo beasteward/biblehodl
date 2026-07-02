@@ -136,6 +136,24 @@ export default function GamePlay({
             </h2>
           </motion.div>
 
+          {/* Question image */}
+          {question.imageUrl && (
+            <motion.div
+              className="flex justify-center mb-8"
+              initial={reducedMotion ? false : { opacity: 0, scale: 0.95 }}
+              animate={{ opacity: 1, scale: 1 }}
+              transition={{ duration: 0.3, delay: 0.1 }}
+            >
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img
+                src={question.imageUrl}
+                alt="Question"
+                className="rounded-xl object-contain"
+                style={{ maxHeight: "260px", maxWidth: "100%", border: "1px solid var(--border)" }}
+              />
+            </motion.div>
+          )}
+
           {/* Answer grid */}
           <div className="grid grid-cols-2 gap-4">
             {question.options.map((option, i) => {

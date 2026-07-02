@@ -284,6 +284,7 @@ export default function GamesView() {
   if (activeSession) {
     return (
       <GameSessionView
+        key={activeSession.sessionId}
         gameId={activeSession.gameId}
         sessionId={activeSession.sessionId}
         gameTitle={activeSession.gameTitle}
@@ -291,6 +292,9 @@ export default function GamesView() {
         isAdmin={activeSession.isAdmin}
         totalQuestions={activeSession.totalQuestions}
         onExit={() => { setActiveSession(null); loadGames(); }}
+        onPlayAgain={(newSessionId) =>
+          setActiveSession((prev) => (prev ? { ...prev, sessionId: newSessionId } : prev))
+        }
       />
     );
   }

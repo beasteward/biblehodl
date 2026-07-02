@@ -16,6 +16,9 @@ interface Props {
   leaderboard: PlayerScore[];
   gameTitle: string;
   onBack: () => void;
+  isHost?: boolean;
+  playingAgain?: boolean;
+  onPlayAgain?: () => void;
 }
 
 const podiumColors = ["#f59e0b", "#9ca3af", "#cd7f32"];
@@ -24,7 +27,14 @@ const podiumIcons = ["🥇", "🥈", "🥉"];
 const RISE_DELAYS = [1.1, 0.6, 0.1]; // indexed by place (0 = 1st)
 const CONFETTI_AT_MS = 1700;
 
-export default function GameLeaderboard({ leaderboard, gameTitle, onBack }: Props) {
+export default function GameLeaderboard({
+  leaderboard,
+  gameTitle,
+  onBack,
+  isHost = false,
+  playingAgain = false,
+  onPlayAgain,
+}: Props) {
   const reducedMotion = useReducedMotion();
   const sorted = [...leaderboard].sort((a, b) => b.score - a.score);
   const top3 = sorted.slice(0, 3);
@@ -151,14 +161,26 @@ export default function GameLeaderboard({ leaderboard, gameTitle, onBack }: Prop
           </p>
         )}
 
-        {/* Back button */}
-        <button
-          onClick={onBack}
-          className="px-6 py-3 rounded-lg text-sm font-medium"
-          style={{ background: "var(--accent)", color: "white" }}
-        >
-          ← Back to Games
-        </button>
+        {/* Actions */}
+        <div className="flex items-center justify-center gap-3">
+          <button
+            onClick={onBack}
+            className="px-6 py-3 rounded-lg text-sm font-medium"
+            style={{ background: "var(--bg-tertiary)", color: "var(--text-muted)", border: "1px solid var(--border)" }}
+          >
+            ← Back to Games
+          </button>
+          {isHost && onPlayAgain && (
+            <button
+              onClick={onPlayAgain}
+              disabled={playingAgain}
+              className="px-6 py-3 rounded-lg text-sm font-bold disabled:opacity-50"
+              style={{ background: "var(--accent)", color: "white" }}
+            >
+              {playingAgain ? "Starting…" : "🔄 Play Again"}
+            </button>
+          )}
+        </div>
       </div>
     </div>
   );

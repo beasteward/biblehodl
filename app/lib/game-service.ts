@@ -9,6 +9,7 @@ export interface GameQuestion {
   text: string;
   options: string[];
   correctIndex: number;
+  imageUrl?: string | null;
 }
 
 export interface SessionLeaderboardEntry {
@@ -27,6 +28,7 @@ export interface PublicQuestion {
   text: string;
   options: string[];
   order: number;
+  imageUrl?: string;
   correctIndex?: number; // only present once revealed
 }
 
@@ -108,9 +110,16 @@ export async function deleteGame(gameId: string, signer: Signer): Promise<void> 
 
 // ─── Sessions ───
 
-export async function createSession(gameId: string, signer: Signer) {
+export async function createSession(
+  gameId: string,
+  signer: Signer,
+  previousSessionId?: string
+) {
   const res = await authFetch(signer, `/api/games/${gameId}/sessions`, {
     method: "POST",
+    ...(previousSessionId
+      ? { headers: JSON_HEADERS, body: JSON.stringify({ previousSessionId }) }
+      : {}),
   });
   if (!res.ok) {
     const err = await res.json();
@@ -174,6 +183,22 @@ export async function submitAnswer(
   if (!res.ok) {
     const err = await res.json();
     throw new Error(err.error || "Failed to submit answer");
+  }
+  return res.json();
+}
+
+export async function generateBibleQuestions(
+  signer: Signer,
+  opts: { book?: string | null; count?: number }
+): Promise<{ questions: GameQuestion[]; source: string }> {
+  const res = await authFetch(signer, "/api/games/generate-bible", {
+    method: "POST",
+    headers: JSON_HEADERS,
+    body: JSON.stringify(opts),
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.error || "Failed to generate questions");
   }
   return res.json();
 }

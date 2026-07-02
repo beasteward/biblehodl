@@ -4,6 +4,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "../../../../lib/prisma";
 import { getPubkeyFromRequest } from "../../../../lib/auth";
+import { emitGameEvent } from "../../../../lib/game-engine";
 
 export async function GET(
   request: NextRequest,
@@ -38,6 +39,16 @@ export async function POST(
     return NextResponse.json({ error: "Game not found" }, { status: 404 });
   }
 
+  let previousSessionId: string | null = null;
+  try {
+    const body = await request.json();
+    if (body && typeof body.previousSessionId === "string") {
+      previousSessionId = body.previousSessionId;
+    }
+  } catch {
+    // no body — fine
+  }
+
   // Any authenticated member can host a session of any game.
   // The session creator becomes the host (controls start/skip/next).
   const session = await prisma.gameSession.create({
@@ -51,6 +62,15 @@ export async function POST(
       game: { include: { questions: { orderBy: { order: "asc" } } } },
     },
   });
+
+  // Play-again: tell everyone still on the old session's final screen to
+  // hop into the new lobby.
+  if (previousSessionId) {
+    const prev = await prisma.gameSession.findUnique({ where: { id: previousSessionId } });
+    if (prev && prev.gameId === gameId) {
+      emitGameEvent(previousSessionId, "play-again", { newSessionId: session.id });
+    }
+  }
 
   return NextResponse.json(session, { status: 201 });
 }
