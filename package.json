@@ -12,6 +12,8 @@
     "@livekit/components-styles": "^1.2.0",
     "@prisma/client": "^6.19.2",
     "blossom-client-sdk": "^1.0.0",
+    "canvas-confetti": "^1.9.4",
+    "framer-motion": "^12.42.2",
     "livekit-client": "^2.20.0",
     "livekit-server-sdk": "^2.15.5",
     "next": "^16.1.6",
@@ -26,6 +28,7 @@
   },
   "devDependencies": {
     "@tailwindcss/postcss": "^4.0.0",
+    "@types/canvas-confetti": "^1.9.0",
     "@types/node": "^22.0.0",
     "@types/nodemailer": "^8.0.1",
     "@types/react": "^19.0.0",
